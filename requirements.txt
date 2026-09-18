@@ -1,0 +1,12 @@
+# file_path: requirements.txt
+# Python 3.12 / 도보·장애물 통합 추론 의존성
+# CUDA용 torch·torchvision 설치 방식은 실행 장치에 맞게 선택한다.
+torch==2.14.0
+torchvision==0.29.0
+transformers==5.17.0
+opencv-python==5.0.0.93
+ultralytics==8.4.152
+numpy==2.5.3
+Pillow==12.3.0
+PyYAML==6.0.3
+scipy==1.18.1

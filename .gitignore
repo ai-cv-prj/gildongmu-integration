@@ -18,6 +18,7 @@ htmlcov/
 
 # 학습 데이터 및 모델 산출물
 data/
+weights/
 outputs/
 checkpoints/
 logs/

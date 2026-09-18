@@ -1,0 +1,18 @@
+# file_path: configs/inference.yaml
+# 도보·장애물 통합 추론 설정. 명령어 옵션이 이 설정보다 우선한다.
+# 모든 상대 경로는 통합 레포 루트 기준. 폴더는 자동 생성하지 않는다.
+
+sample_dir: data/samples   # 입력 영상
+output_dir: outputs/videos # 결과 영상
+device: auto
+overlay_alpha: 0.55 # 오버레이 투명도 
+mode: both # both: 통합, sidewalk: 도보만, obstacle: 장애물만
+
+mask2former:
+  weights: weights/mask2former # 가중치·모델·전처리 설정 폴더
+
+yolo:
+  weights: weights/yolo/finetune_v2_exp02_stage2_best.pt
+  conf: 0.25
+  imgsz: 640
+  head: nms # Ultralytics nms=None, NMS 후처리 사용

@@ -1,7 +1,7 @@
 """
 file_path: src/pipeline.py
 
-같은 원본 프레임의 도보·장애물 추론 결과를 MP4로 저장한다.
+같은 원본 프레임의 도보·장애물·신호등 추론 결과를 MP4로 저장한다.
 모델은 한 번만 로딩하며, 단독 실행과 통합 실행을 지원한다.
 """
 
@@ -16,7 +16,8 @@ import yaml
 
 from src.sidewalk import SidewalkSegmenter
 from src.obstacle import ObstacleDetector, validate_yolo_config
-from src.visualization import draw_detections, overlay_segmentation
+from src.visualization import draw_detections, overlay_segmentation, draw_traffic
+from src.traffic import TrafficSignalPipeline, validate_traffic_config
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -71,10 +72,10 @@ def find_sample_videos(sample_dir):
 
 
 # 영상 한 개 처리
-def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=None):
+def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=None, traffic=None):
     """임시 MP4로 처리한 뒤 프레임 수 확인에 성공하면 최종 파일을 저장한다."""
-    if segmenter is None and detector is None:
-        raise ValueError("도보 또는 장애물 모델이 하나 이상 필요합니다.")
+    if segmenter is None and detector is None and traffic is None:
+        raise ValueError("도보, 장애물 또는 신호등 모델이 하나 이상 필요합니다.")
     video_path, output_path = Path(video_path), Path(output_path)
     if output_path.exists():
         raise FileExistsError(f"결과 영상이 이미 있습니다: {output_path}")
@@ -121,19 +122,28 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
         if not writer.isOpened():
             raise RuntimeError(f"결과 영상을 생성할 수 없습니다: {output_path}")
 
+        if traffic is not None:
+            traffic.reset()
+
         while True:
             success, frame = capture.read()
             if not success:
                 break
-            # 두 모델 모두 색칠 전의 같은 원본 프레임 사용
+            # 모든 모델이 색칠 전의 같은 원본 프레임 사용
             class_map = segmenter.predict(frame) if segmenter is not None else None
             detections = detector.predict(frame) if detector is not None else []
+            traffic_result = traffic.predict(frame) if traffic is not None else None
+            if traffic_result is not None:
+                # 일반 장애물 모델의 traffic_light 박스와 대상 신호등 표시가 겹치지 않게 한다.
+                detections = [item for item in detections if item["class_name"] != "traffic_light"]
             result = (
                 overlay_segmentation(frame, class_map, segmenter.label_ids, alpha)
                 if segmenter is not None else frame
             )
             if detector is not None:
                 result = draw_detections(result, detections)
+            if traffic_result is not None:
+                result = draw_traffic(result, traffic_result)
             writer.write(result)
             processed_frames += 1
             print(
@@ -180,6 +190,8 @@ def run_video_inference(
     yolo_weights=None,
     conf=None,
     imgsz=None,
+    traffic_weights=None,
+    traffic_classifier_weights=None,
 ):
     """명령어 옵션을 설정에 우선 적용하고 모든 대상 영상을 처리한다."""
     if video_path is not None and sample_dir is not None:
@@ -188,13 +200,13 @@ def run_video_inference(
         raise ValueError("--output-path와 --output-dir은 동시에 지정할 수 없습니다.")
     config = load_config(config_path)
     mode = mode if mode is not None else config.get("mode", "both")
-    if mode not in ("both", "sidewalk", "obstacle"):
-        raise ValueError("mode는 both, sidewalk, obstacle 중 하나여야 합니다.")
+    if mode not in ("both", "sidewalk", "obstacle", "traffic", "all"):
+        raise ValueError("mode는 both, sidewalk, obstacle, traffic, all 중 하나여야 합니다.")
     device = device if device is not None else config["device"]
     if device not in ("auto", "cpu", "cuda"):
         raise ValueError("device는 auto, cpu, cuda 중 하나여야 합니다.")
     yolo_config = {}
-    if mode in ("both", "obstacle"):
+    if mode in ("both", "obstacle", "all"):
         if not isinstance(config.get("yolo", {}), dict):
             raise ValueError("yolo 설정은 weights, conf, imgsz, head 항목으로 작성하세요.")
         yolo_config = dict(config.get("yolo", {}))
@@ -202,6 +214,15 @@ def run_video_inference(
             if value is not None:
                 yolo_config[key] = str(value) if key == "weights" else value
         validate_yolo_config(yolo_config)
+    traffic_config = {}
+    if mode in ("traffic", "all"):
+        if not isinstance(config.get("traffic", {}), dict):
+            raise ValueError("traffic 설정은 사전이어야 합니다.")
+        traffic_config = dict(config.get("traffic", {}))
+        for key, value in (("weights", traffic_weights), ("classifier_weights", traffic_classifier_weights)):
+            if value is not None:
+                traffic_config[key] = str(value)
+        validate_traffic_config(traffic_config)
     mask2former_weights = resolve_path(
         mask2former_weights if mask2former_weights is not None else config["mask2former"]["weights"]
     )
@@ -233,7 +254,7 @@ def run_video_inference(
 
     # 사용할 모델만 로딩, 모든 영상에서 재사용
     detector = None
-    if mode in ("both", "obstacle"):
+    if mode in ("both", "obstacle", "all"):
         yolo_weights = resolve_path(yolo_config["weights"])
         detector = ObstacleDetector(
             yolo_weights, device=device,
@@ -246,13 +267,20 @@ def run_video_inference(
         )
     segmenter = (
         SidewalkSegmenter(mask2former_weights, device=device)
-        if mode in ("both", "sidewalk") else None
+        if mode in ("both", "sidewalk", "all") else None
     )
     if segmenter is not None:
         device = segmenter.device
         print(f"Mask2Former: {mask2former_weights}")
+    traffic = None
+    if mode in ("traffic", "all"):
+        traffic_config["weights"] = resolve_path(traffic_config["weights"])
+        traffic_config["classifier_weights"] = resolve_path(traffic_config["classifier_weights"])
+        traffic = TrafficSignalPipeline(device=str(device), **traffic_config)
+        device = traffic.device
+        print(f"신호등 YOLO: {traffic_config['weights']}\nMobileNet: {traffic_config['classifier_weights']}")
     print(f"추론 모드: {mode} | 장치: {device}")
     for index, (video, output) in enumerate(zip(videos, outputs), start=1):
         print(f"입력 영상 [{index}/{len(videos)}]: {video}")
-        process_video(video, output, segmenter, config["overlay_alpha"], detector=detector)
+        process_video(video, output, segmenter, config["overlay_alpha"], detector=detector, traffic=traffic)
     return outputs

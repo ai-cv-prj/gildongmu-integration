@@ -6,7 +6,7 @@ sample_dir: data/samples   # 입력 영상
 output_dir: outputs/videos # 결과 영상
 device: auto
 overlay_alpha: 0.55 # 오버레이 투명도 
-mode: both # both: 통합, sidewalk: 도보만, obstacle: 장애물만
+mode: both # both: 도보+장애물, all: 전체, sidewalk/obstacle/traffic: 단독
 
 mask2former:
   weights: weights/mask2former # 가중치·모델·전처리 설정 폴더
@@ -16,3 +16,12 @@ yolo:
   conf: 0.25
   imgsz: 640
   head: nms # Ultralytics nms=None, NMS 후처리 사용
+
+traffic:
+  weights: weights/traffic/best_YOLO.pt
+  classifier_weights: weights/traffic/best_MobileNet.pt
+  conf: 0.25
+  imgsz: 960
+  crosswalk_min_confidence: 0.50
+  classifier_min_confidence: 0.60
+  association_stable_frames: 3

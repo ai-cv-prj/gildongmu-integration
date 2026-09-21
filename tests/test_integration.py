@@ -67,7 +67,7 @@ class IntegrationTests(unittest.TestCase):
         config = load_config(DEFAULT_CONFIG)
         self.assertEqual(resolve_path(config["mask2former"]["weights"]), PROJECT_DIR / "weights/mask2former")
         self.assertNotIn("model_dir", config)
-        self.assertEqual(resolve_path(config["output_dir"]), PROJECT_DIR / "outputs/videos")
+        self.assertEqual(resolve_path(config["output_dir"]), PROJECT_DIR / "outputs/runs/manual")
         self.assertEqual(resolve_path("/tmp/example.mp4"), Path("/tmp/example.mp4"))
         self.assertEqual(config["overlay_alpha"], 0.55)
         self.assertEqual(config["mode"], "both")
@@ -222,8 +222,8 @@ class IntegrationTests(unittest.TestCase):
         detector_loader.assert_not_called()
         self.assertEqual(process.call_count, 2)
         self.assertEqual(outputs, [
-            PROJECT_DIR / "outputs/videos/result_a.mp4",
-            PROJECT_DIR / "outputs/videos/result_b.mp4",
+            PROJECT_DIR / "outputs/runs/manual/result_a.mp4",
+            PROJECT_DIR / "outputs/runs/manual/result_b.mp4",
         ])
         for call in process.call_args_list:
             self.assertIs(call.args[2], loader.return_value)

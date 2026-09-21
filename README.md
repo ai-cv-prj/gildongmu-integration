@@ -17,7 +17,10 @@ Mask2Former·YOLO 통합 추론의 준비, 실행 및 검증 방법 안내.
 | 신호등 YOLO의 횡단보도 | 핑크 박스, 연결에 사용한 횡단보도는 굵은 청록 박스 |
 
 현재는 **저장된 영상 파일을 분석하는 기능**입니다. 파인튜닝, 실시간 카메라 입력, BEV,
-거리 추정, 위험 판단, 음성·진동 알림은 포함하지 않습니다.
+거리 추정, 음성·진동 알림은 포함하지 않습니다.
+2026-09-21부터 실험용 장애물 위험 판단(ROI·추적·측방 진입)과 JSONL 기록을 지원합니다.
+초기값과 수식, 실행 방법은 [위험 판단 MVP](docs/risk_mvp.md)를 참고하세요.
+현재 설정에서 활성화되어 있으며 `--no-risk`로 기존 탐지 표시만 사용할 수 있습니다.
 신호등 색상과 횡단보도 연결은 추정 결과이며, 사용자의 실제 횡단 의도나 횡단 안전성을 보장하지 않습니다.
 YOLO는 초록·핑크 영역에 한정하지 않고 전체 화면에서 객체를 탐지합니다.
 색칠된 영역이 실제로 안전하다는 뜻은 아니며, 탐지 결과만으로 횡단·이동 여부를 판단하지 않습니다.
@@ -89,7 +92,7 @@ gildongmu-integration/
 - **색상 분류기:** 입력 224의 `mobilenet_v3_small` 체크포인트입니다. 체크포인트에 저장된
   `class_names` 순서를 사용하므로 `[green, red]`를 임의로 `[red, green]`으로 바꾸지 않습니다.
 - **영상:** 폴더 일괄 처리는 MP4만 지원합니다. 하위 폴더까지 자동 탐색하지 않습니다.
-- **출력:** `outputs/videos/`가 미리 있어야 합니다. 추론 코드는 입출력 폴더를 자동 생성하지 않습니다.
+- **출력:** `outputs/runs/manual/`가 미리 있어야 합니다. 추론 코드는 입출력 폴더를 자동 생성하지 않습니다.
 
 ## 2. 영상 실행하기
 
@@ -117,7 +120,7 @@ python -m scripts.run_video_inference --sample-dir data/samples/sample1
 ```bash
 python -m scripts.run_video_inference \
   --video-path data/samples/sample1/OBS_260914_G24P_001.mp4 \
-  --output-path outputs/videos/result_OBS_260914_G24P_001_combined.mp4
+  --output-path outputs/runs/manual/result_OBS_260914_G24P_001_combined.mp4
 ```
 
 이 이름도 이미 존재하면 다른 이름을 지정해야 합니다.
@@ -130,12 +133,12 @@ python -m scripts.run_video_inference \
 # 도보 마스크만 표시
 python -m scripts.run_video_inference --mode sidewalk \
   --video-path data/samples/sample1/OBS_260914_G24P_001.mp4 \
-  --output-path outputs/videos/result_OBS_260914_G24P_001_sidewalk.mp4
+  --output-path outputs/runs/manual/result_OBS_260914_G24P_001_sidewalk.mp4
 
 # 장애물 박스만 표시
 python -m scripts.run_video_inference --mode obstacle \
   --video-path data/samples/sample1/OBS_260914_G24P_001.mp4 \
-  --output-path outputs/videos/result_OBS_260914_G24P_001_obstacle.mp4
+  --output-path outputs/runs/manual/result_OBS_260914_G24P_001_obstacle.mp4
 ```
 
 단독 모드에서는 해당 모델만 로딩합니다. YAML은 아래의 전체 설정 구조를 유지하세요.
@@ -146,12 +149,12 @@ python -m scripts.run_video_inference --mode obstacle \
 # 신호등 검출 + 횡단보도 연결 + 색상 분류
 python -m scripts.run_video_inference --mode traffic \
   --video-path data/samples/sample1/OBS_260914_G24P_001.mp4 \
-  --output-path outputs/videos/result_signal.mp4
+  --output-path outputs/runs/manual/result_signal.mp4
 
 # 도보 + 장애물 + 신호등을 한 영상에 표시
 python -m scripts.run_video_inference --mode all \
   --video-path data/samples/sample1/OBS_260914_G24P_001.mp4 \
-  --output-path outputs/videos/result_all.mp4
+  --output-path outputs/runs/manual/result_all.mp4
 ```
 
 신호등 가중치를 다른 곳에 두었다면 `--traffic-weights /경로/YOLO.pt`와
@@ -186,14 +189,15 @@ Mask2Former의 핑크 마스크는 화면에 함께 표시하지만 현재 신�
 
 ## 3. 결과 확인하기
 
-기본 저장 위치는 `outputs/videos/result_원본파일명.mp4`입니다.
+기본 저장 위치는 `outputs/runs/manual/result_원본파일명.mp4`입니다.
 예를 들어 `test.mp4`의 결과는 `result_test.mp4`로 저장됩니다.
 `--output-path`를 지정하면 지정한 이름을 그대로 사용합니다.
 
 - 원본 영상 크기와 저장 FPS를 유지하며 MP4로 다시 인코딩합니다. 원본 오디오는 포함하지 않습니다.
 - 진행 중에는 콘솔에 `영상 처리: 처리한 프레임 수/전체 프레임 수`가 표시됩니다.
 - 완료되면 `결과 영상 저장: ...` 메시지가 나옵니다.
-- 영상 파일만 저장합니다. 객체 좌표 JSON, 성능 평가표, 새 모델 가중치는 저장하지 않습니다.
+- 위험 기능을 켜면 MP4와 같은 이름의 `.risk.jsonl`에 객체 좌표·선택적 ID·위험 등급·판단 사유·이벤트를 저장합니다.
+- `--no-risk`에서는 영상만 저장합니다. 성능 평가표나 새 모델 가중치는 생성하지 않습니다.
 - 저장 FPS를 유지한다는 뜻이지, 그 속도로 실시간 추론한다는 뜻은 아닙니다. 별도 속도 측정이 필요합니다.
 
 ## 4. 설정 바꾸기
@@ -202,7 +206,7 @@ Mask2Former의 핑크 마스크는 화면에 함께 표시하지만 현재 신�
 
 ```yaml
 sample_dir: data/samples
-output_dir: outputs/videos
+output_dir: outputs/runs/manual
 device: auto
 overlay_alpha: 0.55
 mode: both
@@ -284,7 +288,7 @@ python -m scripts.run_video_inference \
 | --- | --- |
 | 결과 영상이 이미 있음 | 다른 `--output-path`나 기존 출력 폴더를 지정. 자동 덮어쓰기·건너뛰기 없음 |
 | 샘플 MP4가 없음 | `data/samples`가 아니라 실제 영상이 들어 있는 `data/samples/sample1`을 지정했는지 확인 |
-| 출력 폴더가 없음 | `outputs/videos` 등 지정한 폴더를 먼저 준비. 자동 생성하지 않음 |
+| 출력 폴더가 없음 | `outputs/runs/manual` 등 지정한 폴더를 먼저 준비. 자동 생성하지 않음 |
 | 모델 파일이 없음 | Mask2Former 설정 파일까지 모두 준비했는지, YOLO 파일명이 설정과 같은지 확인 |
 | 3클래스·32클래스 오류 | 현재 코드에 맞는 팀 가중치인지 확인. 임의의 기본 모델은 사용할 수 없음 |
 | CUDA를 사용할 수 없음 | GPU 환경 확인. CPU로 실행하려면 명령어에 `--device cpu` 추가 |
@@ -391,4 +395,30 @@ Transformers 5.17.0으로 CPU 검증했습니다. 위 Python 3.12 기준 고정 
 4. 프로젝트 기준인 Python 3.12와 requirements.txt의 고정 의존성으로 실행을 검증합니다.
    현재 자동 테스트와 신호등 추론은 앞 절에 기록한 별도 환경에서 수행했습니다.
 
-요약: 가상환경 활성화 → 가중치·영상 준비 → 샘플 폴더 선택 → 실행 → outputs/videos 결과 확인.
+요약: 가상환경 활성화 → 가중치·영상 준비 → 샘플 폴더 선택 → 실행 → outputs/runs/manual 결과 확인.
+
+## 8. 장애물 위험 판단 MVP (2026-09-21)
+
+[초기 ROI 좌표·임계값·수식·검증 결과](docs/risk_mvp.md)를 참고하세요.
+전체 화면 탐지를 유지하며 신호등 탐지·선택·색상 분류·표시 부분은 변경하지 않았습니다.
+
+2026-09-21 전체 화면·ROI 자르기 실측과 8개 영상 검토는
+[ROI 비교 및 위험 검토 기록](docs/roi_and_risk_review_20260921.md)을 참고하세요.
+당시 별도 검토 설정에서 TTC 위험 반영과 큰 ROI·등급 표시를 켰습니다. 현재 3차 설정은 TTC 반영을 기본으로 켭니다.
+거리(m)·접근 속도(m/s)는 아직 추정하지 않습니다. 자동 테스트 72개가 통과했습니다.
+
+### 위험 결과 피드백 반영
+
+하단 ROI 확장, 조건부 보도 방향, 정적 장애물 근접 구간, 경고 해제 확인을 반영했습니다.
+[실제 구현·초기값·후속 검증 사항](docs/risk_revision_implementation_20260921.md)을 참고하세요.
+자동 테스트 87개가 통과했습니다. 화면 이탈/관측 소실은 실제 신체 주변의 안전 확인을 뜻하지 않습니다.
+새 결과와 좌우 비교 영상은 실행한 로컬 환경의 `outputs/experiments/` 아래에 생성합니다.
+
+### 공통 ROI와 보도 기반 경고 (3차)
+
+개인별 신체 치수와 지면 높이 변화는 제외하고, 공통 진행 ROI·측면 근접·보도 기반 경고를 추가했습니다.
+[구현 기준과 초기값](docs/risk_shared_profile_20260921.md)을 참고하세요. 자동 테스트 116개가 통과했습니다.
+강하게 겹친 같은 클래스의 경고는 한 알림 단위로 표시하되, 모든 탐지·개별 위험 등급·감사 이벤트는 유지합니다.
+기존 MP4 8개와 sample2의 MP4 2개를 처리하며 MOV는 제외합니다.
+결과 영상과 회차별 안내는 `outputs/` 아래에 생성하며, 용량 때문에 저장소에 포함하지 않습니다.
+저장소에서 확인할 수 있는 근거는 위 docs 문서들이고, 영상은 직접 실행해 재현합니다.

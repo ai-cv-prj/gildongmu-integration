@@ -70,6 +70,46 @@ def overlay_segmentation(frame, class_map, label_ids, alpha=0.55):
     return result
 
 
+def draw_traffic(frame, prediction):
+    """대상 신호의 색상, 횡단보도 박스, 소실점과 선택 실패 사유를 표시한다."""
+    result = frame.copy()
+    height, width = frame.shape[:2]
+    association = prediction["association"]
+
+    def point(x, y):
+        return (max(0, min(width - 1, round(x))), max(0, min(height - 1, round(y))))
+
+    for index, crossing in enumerate(prediction["crosswalks"]):
+        x1, y1, x2, y2 = crossing["xyxy"]
+        selected = index == association.get("crosswalk_index")
+        color = (255, 255, 0) if selected else LABEL_COLORS["crosswalk"]
+        cv2.rectangle(result, point(x1, y1), point(x2, y2), color, 3 if selected else 1)
+        label = "selected crosswalk" if selected else "crosswalk"
+        cv2.putText(result, label, point(x1, max(15, y1 - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+
+    state = prediction["signal_state"]
+    colors = {"red": (0, 0, 255), "green": (0, 255, 0), "unknown": (160, 160, 160)}
+    color = colors[state]
+    vp = association.get("vanishing_point")
+    if vp is not None and 0 <= vp[0] < width and 0 <= vp[1] < height:
+        cv2.drawMarker(result, point(*vp), (255, 255, 0), cv2.MARKER_CROSS, 16, 2)
+    for signal in prediction["detections"]:
+        x1, y1, x2, y2 = signal["xyxy"]
+        cv2.rectangle(result, point(x1, y1), point(x2, y2), color, 3)
+        score = signal["color_confidence"]
+        label = f"signal: {state}" + (f" {score:.2f}" if score is not None else "")
+        cv2.putText(result, label, point(x1, max(15, y1 - 6)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2, cv2.LINE_AA)
+        if vp is not None and 0 <= vp[0] < width and 0 <= vp[1] < height:
+            cv2.line(result, point((x1 + x2) / 2, (y1 + y2) / 2), point(*vp), color, 1)
+    reason = association.get("reason") or association["status"]
+    text = f"Signal: {state} | candidates: {prediction['detected_signal_count']} | {reason}"
+    cv2.putText(result, text, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 3, cv2.LINE_AA)
+    cv2.putText(result, text, (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1, cv2.LINE_AA)
+    return result
+
+
 # 클래스별 색상의 객체 박스 및 이름 표시
 def draw_detections(frame, detections):
     """입력 이미지를 유지하며 클래스별 색상으로 박스·이름·신뢰도를 표시한다."""

@@ -10,3 +10,7 @@ numpy==2.5.3
 Pillow==12.3.0
 PyYAML==6.0.3
 scipy==1.18.1
+lap==0.5.12
+
+# Optional batch review video encoding (CPU FFmpeg binary)
+imageio-ffmpeg==0.6.0

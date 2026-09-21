@@ -3,7 +3,7 @@
 # 모든 상대 경로는 통합 레포 루트 기준. 폴더는 자동 생성하지 않는다.
 
 sample_dir: data/samples   # 입력 영상
-output_dir: outputs/videos # 결과 영상
+output_dir: outputs/runs/manual # 결과 영상
 device: auto
 overlay_alpha: 0.55 # 오버레이 투명도 
 mode: both # both: 도보+장애물, all: 전체, sidewalk/obstacle/traffic: 단독
@@ -25,3 +25,114 @@ traffic:
   crosswalk_min_confidence: 0.50
   classifier_min_confidence: 0.60
   association_stable_frames: 3
+
+# Experimental forward-camera profile: normalized image coordinates, NOT metres.
+# Detection always uses the full frame. These thresholds require scene calibration.
+risk:
+  enabled: true
+  corridor_polygon:
+  - - 0.40
+    - 0.30
+  - - 0.60
+    - 0.30
+  - - 0.98
+    - 1.0
+  - - 0.02
+    - 1.0
+  immediate_polygon:
+  - - 0.205
+    - 0.75
+  - - 0.795
+    - 0.75
+  - - 0.98
+    - 1.0
+  - - 0.02
+    - 1.0
+  footprint_height_ratio: 0.15
+  footprint_max_height: 0.02
+  exit_overlap_threshold: 0.1
+  exit_margin: 0.02
+  static_caution_y: 0.65
+  static_danger_y: 0.88
+  static_ground_classes:
+  - pole
+  - bollard
+  - tree_trunk
+  - potted_plant
+  - fire_hydrant
+  - utility_box
+  - parking_meter
+  - kiosk
+  - bench
+  - barricade
+  - trash_bin
+  sidewalk_roi_enabled: true
+  roi_max_shift: 0.15
+  roi_fit_residual: 0.04
+  roi_confirm_s: 0.2
+  roi_smooth_s: 0.3
+  roi_max_shift_per_s: 0.12
+  roi_hold_s: 0.5
+  roi_return_s: 0.5
+  clear_confirm_s: 0.5
+  uncertainty_hold_s: 0.8
+  id_bridge_s: 0.3
+  id_bridge_iou: 0.5
+  overlap_threshold: 0.2
+  edge_margin_ratio: 0.08
+  history_window_s: 0.6
+  min_history_s: 0.2
+  prediction_horizon_s: 0.8
+  min_lateral_speed: 0.05
+  lateral_near_y: 0.42
+  reset_gap_s: 0.5
+  ttc_alerts: true
+  ttc_danger_s: 1.5
+  ttc_caution_s: 3.0
+  min_expansion_rate: 0.05
+  max_motion_residual: 0.03
+  camera_max_rotation_deg: 4.0
+  camera_max_translation: 0.12
+  camera_max_scale_change: 0.1
+  release_hold_s: 0.5
+  repeat_cooldown_s: 2.0
+  event_match_iou: 0.3
+  draw_roi: true
+  review_overlay: false
+  log_jsonl: true
+  # Shared image profile: no individual body dimensions, depth or ground-height model.
+  side_proximity_enabled: true
+  side_near_y: 0.50
+  side_min_height: 0.18
+  side_min_width: 0.12
+  full_static_footprint: true
+  relative_entry_enabled: true
+  roi_recalibration_enabled: true
+  roi_ground_adapt_enabled: true
+  roi_jitter_shift: 0.03
+  roi_large_shift: 0.08
+  roi_change_confirm_s: 0.30
+  roi_small_confirm_s: 0.50
+  roi_candidate_spread: 0.03
+  surface_risk_enabled: true
+  surface_confirm_s: 0.20
+  surface_clear_s: 0.50
+  surface_min_area: 0.003
+  surface_band_fraction: 0.12
+  surface_unstable_change: 0.18
+  class_bridge_enabled: true
+  visibility_advisory_s: 1.0
+  # Keep all detections; combine only strongly overlapping warning labels/counts.
+  warning_grouping_enabled: true
+  warning_group_iou: 0.65
+  warning_group_containment: 0.85
+  warning_group_max_area_ratio: 1.60
+tracking:
+  enabled: true
+  backend: botsort
+  track_high_thresh: 0.25
+  track_low_thresh: 0.1
+  new_track_thresh: 0.25
+  track_buffer: 30
+  match_thresh: 0.8
+  fuse_score: true

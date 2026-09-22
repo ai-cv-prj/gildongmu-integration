@@ -127,11 +127,11 @@ def draw_traffic(frame, prediction):
             label = f"TARGET {signal['signal_state'].upper()}"
             if signal.get("color_confidence") is not None:
                 label += f" color {signal['color_confidence'] * 100:.1f}%"
-            if signal.get("track_id") is not None:
-                label += f" #{signal['track_id']}"
         else:
             color = yellow if selection == "candidate" else blue
             label = f"{'CANDIDATE' if selection == 'candidate' else 'UNSELECTED'} det {signal['confidence'] * 100:.1f}%"
+        if signal.get("track_id") is not None:
+            label += f" #{signal['track_id']}"
         add_box(signal["xyxy"], label, color, 4 if selection == "selected" else 2)
         if vp_visible and selection in {"selected", "candidate"}:
             x1, y1, x2, y2 = signal["xyxy"]

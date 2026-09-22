@@ -165,35 +165,15 @@ python -m scripts.run_video_inference --mode all \
 기존 `both`는 도보+장애물만 실행하고, 신호등까지 사용하려면 `all`을 선택합니다.
 `traffic` 모드에는 도보·장애물 가중치가 필요하지 않습니다.
 
-신호등 선택·추적 순서 (`gildongmu-test-app` SESAC-73 이식):
+신호등은 `gildongmu-test-app` SESAC-78(`b3e4707`)의 BoT-SORT 추적·대상 선택 정책을 반영했습니다.
+중복 검출을 제거하고 낮은 신뢰도의 검출은 기존 객체 연결에만 사용합니다. 신호등이 하나면
+임시 선택하고, 복수 검출 시 횡단보도로 재확인하며 확정 대상은 정상 추적 중 유지합니다.
+미검출 대상 보관·예측 박스 표시는 없습니다. 모든 표시 신호등에 객체 ID를 표시합니다.
 
-1. 기존 대상이 있으면 현재 검출과 박스 겹침·중심 이동·크기를 비교합니다.
-   신뢰할 수 있는 특징점 이동이 있을 때만 카메라 움직임을 보정합니다.
-2. 기존 대상이 없고 신호등이 하나면 바로 분류합니다. 횡단보도 연결은 미확인이므로
-   `crosswalk_relation_unverified`를 표시합니다. 여러 개면 횡단보도 도색 줄무늬의
-   끝점에서 방향을 추정하고, 같은 신호등·횡단보도를 기본 3프레임 연속 확인해 선택합니다.
-3. 기존 대상이 계속 보여도 신호등이 여러 개면 횡단보도 연결을 다시 검사합니다.
-   다른 후보가 나오면 색상을 보류하고 3프레임 연속 확인 후 대상을 변경합니다
-   (`waiting_for_target_switch` → `target_switched`).
-4. 연결 충돌 후에는 횡단보도를 놓치거나 신호등이 하나로 줄어도 기존 색상을 즉시 복구하지
-   않습니다. 기존 대상이 다시 3프레임 연결되면 같은 대상 번호로 복구합니다
-   (`target_revalidated`). 충돌이 없고 단순히 횡단보도·방향을 놓친 경우에는
-   현재 검출된 기존 대상을 유지합니다.
-5. 선택 여부와 관계없이 신호등 검출 전체를 표시합니다. 횡단보도 연결 기준(기본 0.50)
-   미달 후보와 위치 조건 탈락 박스도 남기고, 상단은 검출/선택 상태, 하단은 횡단보도
-   검출 상태와 연결 사유를 표시합니다. 최종 대상만 색상을 분류합니다.
-
-판단은 영상의 원본 FPS 기준 시각과 프레임 번호를 사용합니다. 번호 불연속·시각 역순·
-1초 초과 간격·해상도 변경 시 이력을 초기화하며, 검출되지 않은 과거 대상이나 색상을
-복원하지 않습니다. 기존 `gildongmu-test-app`의 신호등 모드는 **초당 최대 5회 판단**으로,
-일정한 간격일 때 첫 확인부터 세 번째 확인까지 **약 0.4초**입니다. 통합 프로젝트에서
-초당 30장 영상을 처리하면 같은 3프레임 조건이 영상 시각 기준 **약 0.067초**에 충족됩니다.
-테스트 앱에 처리·통신 지연이 있으면 확인 시간은 더 길어질 수 있습니다.
-이번 이식은 같은 **프레임 수 조건**을 유지합니다.
-실시간 전환 시에는 연속 프레임 수와 최소 확인 시간을 함께 적용할지 검토할 예정입니다.
-상세 비교와 미구현 후속 사항은 [신호등 이식 문서](docs/traffic-signal-port.md)에 기록했습니다.
-
-세부 조건·수정한 문제·반환 형식은 [신호등 이식 문서](docs/traffic-signal-port.md)를 참고하세요.
+`requirements.txt`에 추가된 객체 매칭 의존성 `lap==0.5.13`을 설치해야 합니다.
+기존 모델 환경에서는 `python -m pip install lap==0.5.13`로 추가할 수 있습니다.
+음성 안내는 실시간 입력 전환 때 추가할 예정이며 현재 결과 영상은 음성을 합성하지 않습니다.
+판단 기준·반환 필드·FPS 차이·검증 결과는 [신호등 이식 문서](docs/traffic-signal-port.md)에 정리했습니다.
 
 횡단보도 선택은 **신호등 전용 YOLO의 crosswalk 박스**를 사용합니다.
 Mask2Former의 핑크 마스크는 화면에 함께 표시하지만 현재 신호등 연결의 입력은 아닙니다.
@@ -268,7 +248,7 @@ traffic:
 | `traffic.conf` / `traffic.imgsz` | 신호등 검출 기준 / YOLO 입력 크기 |
 | `traffic.crosswalk_min_confidence` | 연결에 사용할 횡단보도 검출 기준 |
 | `traffic.classifier_min_confidence` | 이 값보다 낮으면 색상을 `unknown` 처리 |
-| `traffic.association_stable_frames` | 최초 복수 후보 선택·대상 변경·충돌 후 복구에 필요한 연속 프레임 수. 기본 3, 1이면 첫 후보부터 사용 |
+| `traffic.association_stable_frames` | 최초 복수 후보 선택·임시 대상 횡단보도 재확인에 필요한 연속 프레임 수. 기본 3, 1이면 첫 후보부터 사용 |
 
 `overlay_alpha`는 0~1 범위이며 탐지 성능이나 YOLO 박스에는 영향을 주지 않습니다.
 Mask2Former의 전처리는 저장된 `preprocessor_config.json`을 사용합니다.
@@ -336,13 +316,15 @@ python -m scripts.run_video_inference \
 | [src/sidewalk.py](src/sidewalk.py) | Mask2Former 로딩과 보행 영역 추론 |
 | [src/obstacle.py](src/obstacle.py) | YOLO 로딩과 장애물 추론 |
 | [src/traffic.py](src/traffic.py) | 신호등 YOLO, MobileNet 로딩·선택 대상 색상 분류 |
-| [src/traffic_association.py](src/traffic_association.py) | 횡단보도 연결·현재 대상 추적·대상 변경·충돌 후 재확인 |
+| [src/traffic_association.py](src/traffic_association.py) | 중복 제거·횡단보도 연결·임시 대상 재확인·확정 대상 유지 |
+| [src/traffic_tracker.py](src/traffic_tracker.py) | 영상별 BoT-SORT ID·낮은 신뢰도 연결·미검출 이력 해제 |
 | [src/traffic_geometry.py](src/traffic_geometry.py) | 도색 줄무늬 경계 기반 횡단보도 방향 추정 |
 | [src/traffic_motion.py](src/traffic_motion.py) | 카메라 이동 검증과 이전 박스 좌표 보정 |
 | [src/visualization.py](src/visualization.py) | 반투명 마스크와 클래스별 색상의 객체 박스·글자 표시 |
 | [tests/test_integration.py](tests/test_integration.py) | 설정·옵션·좌표·클래스별 색상·영상 저장 동작 검증. 일반 추론 실행에는 사용하지 않음 |
 | [tests/test_traffic.py](tests/test_traffic.py) | 단일·복수 신호등 선택, 색상 전처리, unknown, 모드 호환성 검증 |
 | [tests/test_traffic_tracking.py](tests/test_traffic_tracking.py) | 대상 전환·재확인·색상 보류·흔들림·방향·표시 검증 |
+| [tests/test_traffic_botsort.py](tests/test_traffic_botsort.py) | 실제 BoT-SORT ID·낮은 신뢰도 연결·중복 제거·영상별 초기화 검증 |
 | [docs/traffic-signal-port.md](docs/traffic-signal-port.md) | 테스트 앱 이식 내역·설정 비교·검증 범위·후속 과제 |
 
 각 모델은 한 번만 로딩하고 모든 영상에서 재사용합니다.
@@ -354,7 +336,7 @@ python -m scripts.run_video_inference \
 - 공통 입력: OpenCV BGR 이미지 `(높이, 너비, 3)`.
 - `SidewalkSegmenter.predict(frame)`: 원본 크기의 정수 클래스 지도 반환. 번호는 `label_ids`로 조회.
 - `ObstacleDetector.predict(frame)`: `xyxy`, `class_id`, `class_name`, `confidence`를 담은 목록 반환. 탐지 객체가 없으면 빈 목록.
-- `TrafficSignalPipeline.predict(frame, frame_id=..., captured_at_ms=...)`: 모든 신호등의
+- `TrafficSignalPipeline.predict(frame, frame_id=..., captured_at_ms=...)`: 필터를 통과한 신호등의
   `detections`, 횡단보도 후보 `crosswalks`, 선택 상태·추적 근거 `association`,
   선택/후보 인덱스와 횡단보도 진단을 반환합니다. 최종 선택 대상만 색상을 분류하며
   색상은 `red`, `green`, `unknown`입니다. `reset()`은 다음 영상의 첫 프레임 전에 호출합니다.
@@ -370,7 +352,22 @@ python -B -m unittest discover -s tests -p 'test_*.py' -v
 이 테스트는 코드 연결과 입출력 동작을 확인하는 것으로, **실제 탐지 정확도나 실시간 속도를 보장하지 않습니다.**
 실제 가중치를 사용하는 통합 추론은 별도로 실행하고, 같은 입력에 대한 단독·통합 결과를 비교해야 합니다.
 
-2026-09-22 검증: 기존 49개 + 추가 회귀 15개, 총 **64개 자동 테스트 통과**.
+2026-09-22 SESAC-78 반영 후 **87개 자동 테스트 통과**. BoT-SORT의 낮은 신뢰도 연결,
+중복 제거, 임시 대상 재확인·확정 대상 유지, 미검출 즉시 해제, 영상별 ID 격리와
+기존 도보·장애물·영상 출력 경로를 검증했습니다.
+
+최신 `dev`의 장애물 위험 판단 변경을 반영한 PR 최종 상태에서는 **전체 154개 테스트가 통과**했습니다.
+공용 객체 매칭 의존성 `lap`은 중복 버전 지정을 제거하고 0.5.13으로 통일했습니다.
+
+같은 날 저장된 실촬영 211프레임을 실제 YOLO v2·MobileNet으로 CPU 재추론했습니다.
+green 83·red 62·미검출 unknown 66프레임이며, 중복 박스 2건과 연결되지 않은 낮은 신뢰도
+박스 18건을 제거했습니다. 45초 확인용 영상은 `outputs/traffic-test-20260922/traffic-preview.mp4`에
+저장하고 전체 디코딩을 확인했습니다. 산출물은 로컬 전용이며 Git에 포함되지 않습니다.
+복수 신호등·낮은 신뢰도의 대상 유지 장면은 이 촬영에 없어 자동 테스트로 확인했습니다.
+정답 정확도 평가는 아니며 Python 3.14.4의 기존 환경을 사용했습니다.
+입력·집계·재실행 방법과 검증 한계는 [신호등 이식 문서](docs/traffic-signal-port.md)에 기록했습니다.
+
+아래는 이번 정책 변경 이전의 검증 기록입니다. 기존 49개 + 추가 회귀 15개, 총 64개 통과.
 실촬영 170프레임의 저장 검출을 재입력해 테스트 앱과 판단 결과가 모두 일치했고,
 실제 v2 모델의 3프레임 추론·표시와 교체된 로컬 가중치 로딩을 확인했습니다.
 검증 범위와 사용 환경은 [신호등 이식 문서](docs/traffic-signal-port.md)에 기록했습니다.
@@ -392,12 +389,13 @@ Transformers 5.17.0으로 CPU 검증했습니다. 위 Python 3.12 기준 고정 
 | --- | --- |
 | 신호등 파이프라인 연동 | 신호등 전용 YOLO → 횡단보도 연결 → MobileNetV3-Small 색상 분류 연결 |
 | 대상 선택 | 1개 검출 시 즉시 분류, 2개 이상이면 횡단보도 소실점의 수평 거리와 신호등 크기로 비교 |
-| 선택 안정화 | 카메라 이동 보정으로 현재 대상을 추적하고 다른 후보 3프레임 연속 확인 후 변경. 연결 충돌 중에는 색상 보류 |
+| 객체 추적 | 영상별 BoT-SORT, 낮은 신뢰도는 기존 객체 연결에만 사용, IoU 0.60 중복 제거 |
+| 선택 안정화 | 단일 검출 대상은 복수 검출 시 횡단보도로 재확인; 확정 대상은 정상 추적 중 유지. 추적 실패 시 즉시 재선택 |
 | 실행 모드 | traffic 단독 및 all 통합 추가, 기존 both·sidewalk·obstacle 유지 |
 | 영상 표시 | 전체 신호등의 미선택·후보·최종 대상 구분, 횡단보도 신뢰도·탈락 사유, 소실점·연결 상태 표시 |
 | 구조 확인 | scripts 실행 진입점, src 추론·표시, configs 설정, tests 검증 구조 유지 |
 | 입출력 규칙 | 원본 BGR·원본 픽셀 좌표, 모델 1회 로딩, 영상별 선택 이력 초기화, 결과 덮어쓰기 금지 유지 |
-| 검증 | 자동 테스트 64개 통과, 저장 검출 170프레임 판단 일치, 실제 v2 모델 추론·렌더링 확인 |
+| 검증 | 최신 dev 반영 후 전체 154개 테스트 통과, 실제 v2·MobileNet으로 실촬영 211프레임 재추론 및 45초 확인용 영상 검증 |
 | 로컬 가중치 | 기존 경로의 v1을 v2로 교체, 원본 v2와 해시 일치. 가중치 파일은 Git 제외 |
 
 ### 미해결 문제: 일반 신호등 박스가 숨겨지는 동작
@@ -430,7 +428,8 @@ Transformers 5.17.0으로 CPU 검증했습니다. 위 Python 3.12 기준 고정 
 
 5. 실시간 전환 시 연속 프레임 수와 최소 확인 시간을 함께 적용할지 검토합니다.
    기존 테스트 앱은 초당 최대 5회로 첫 확인부터 세 번째 확인까지 정상 주기에서 약 0.4초입니다.
-6. 음성 안내를 붙일 때 같은 대상·같은 색의 2프레임 연속 확인 조건을 별도로 구현합니다.
+6. 음성은 실시간 전환 때 추가합니다. 테스트 앱의 3프레임·400ms 확인, 2초 소실 안내,
+   같은 색 반복 억제·복구 후 재안내와 순차 재생 정책을 적용할 예정입니다.
 
 요약: 가상환경 활성화 → 가중치·영상 준비 → 샘플 폴더 선택 → 실행 → outputs/runs/manual 결과 확인.
 

@@ -1,6 +1,6 @@
 """보행자 신호등 YOLO → 횡단보도 연결 → MobileNetV3 색상 분류.
 
-선택 로직은 gildongmu-test-app의 SESAC-73 버전을 이식한다.
+선택 로직은 gildongmu-test-app의 SESAC-78 버전을 이식한다.
 입출력 좌표는 원본 BGR 프레임 픽셀 기준이다.
 """
 import math
@@ -9,7 +9,10 @@ from pathlib import Path
 import cv2
 import torch
 
-from src.traffic_association import FrameContext, TemporalSelector, crosswalk_diagnostics
+from src.traffic_association import (
+    FrameContext, TemporalSelector, crosswalk_diagnostics, suppress_duplicate_signals,
+)
+from src.traffic_tracker import RECOVERY_CONFIDENCE, SignalTracker
 
 
 CLASS_NAMES = {0: "pedestrian_signal", 1: "crosswalk"}
@@ -87,6 +90,7 @@ class TrafficSignalPipeline:
     def reset(self):
         """영상이 바뀌면 이전 영상의 선택 이력을 비운다."""
         self.selector = TemporalSelector(self.config["association_stable_frames"])
+        self.tracker = SignalTracker()
         self.frame_id = 0
 
     def _classify(self, frame, box):
@@ -124,9 +128,10 @@ class TrafficSignalPipeline:
         """
         frame_id = self.frame_id + 1 if frame_id is None else frame_id
         captured_at_ms = (frame_id - 1) * 200 if captured_at_ms is None else captured_at_ms
-        context = FrameContext(frame_id, captured_at_ms)
+        context = FrameContext(frame_id, captured_at_ms, self.config["conf"])
         self.frame_id = frame_id
-        detector_confidence = min(self.config["conf"], self.config["crosswalk_min_confidence"])
+        crosswalk_detection_confidence = min(self.config["conf"], self.config["crosswalk_min_confidence"])
+        detector_confidence = min(RECOVERY_CONFIDENCE, crosswalk_detection_confidence)
         result = self.detector.predict(
             source=frame, imgsz=self.config["imgsz"], conf=detector_confidence,
             device=self.device, quantize=32, verbose=False, save=False, save_txt=False,
@@ -141,12 +146,23 @@ class TrafficSignalPipeline:
                 cid = int(cid)
                 item = {"xyxy": xyxy, "confidence": float(score),
                         "class_id": cid, "class_name": CLASS_NAMES[cid]}
-                if cid == 0 and score >= self.config["conf"]:
+                if cid == 0 and score >= min(RECOVERY_CONFIDENCE, self.config["conf"]):
                     signals.append(item)
-                elif cid == 1 and score >= detector_confidence:
+                elif cid == 1 and score >= crosswalk_detection_confidence:
                     candidates.append(item)
                     if score >= self.config["crosswalk_min_confidence"]:
                         crosswalks.append(item)
+        raw_signal_count = len(signals)
+        signals = suppress_duplicate_signals(signals)
+        suppressed_signal_count = raw_signal_count - len(signals)
+        self.tracker.update(frame, signals, context)
+        # 낮은 신뢰도의 새 객체를 개수·선택·화면 표시에 섞지 않고 기존 객체 연결에만 사용한다.
+        unmatched_low_confidence_count = sum(
+            signal["confidence"] < self.config["conf"] and signal["track_id"] is None
+            for signal in signals
+        )
+        signals = [signal for signal in signals
+                   if signal["confidence"] >= self.config["conf"] or signal["track_id"] is not None]
         decision = self.selector.select(frame, signals, crosswalks, cv2, context)
         selected_index = decision.get("signal_index")
         candidate_index = decision.get("candidate_signal_index")
@@ -161,16 +177,19 @@ class TrafficSignalPipeline:
                 selection = "candidate"
             visible.append({**signal, "signal_state": color, "color_confidence": score,
                             "selection_status": selection,
-                            "track_id": decision.get("track_id") if selection == "selected" else None})
+                            "track_id": signal.get("track_id")})
         height, width = frame.shape[:2]
         crossing_boxes, diagnostics = crosswalk_diagnostics(
             candidates, crosswalks, decision, width, height,
             self.config["crosswalk_min_confidence"],
         )
-        diagnostics["detector_confidence"] = detector_confidence
+        diagnostics["detector_confidence"] = crosswalk_detection_confidence
         decision["color"] = state
         return {"detections": visible, "crosswalks": crossing_boxes, "association": decision,
                 "signal_state": state, "detected_signal_count": len(signals),
+                "raw_detected_signal_count": raw_signal_count,
+                "suppressed_signal_count": suppressed_signal_count,
+                "unmatched_low_confidence_count": unmatched_low_confidence_count,
                 "selected_detection_index": selected_index,
                 "candidate_detection_index": candidate_index,
                 "detected_crosswalk_count": len(crosswalks),

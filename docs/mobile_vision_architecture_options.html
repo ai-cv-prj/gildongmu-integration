@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>모바일 보행 장애물 인식 아키텍처 선택지 정리</title>
+<style>
+  :root{
+    --bg:#f6f8fb;
+    --card:#ffffff;
+    --text:#1f2937;
+    --muted:#667085;
+    --line:#dfe5ec;
+    --accent:#155eef;
+    --accent-dark:#1849a9;
+    --good:#067647;
+    --warn:#b54708;
+    --rec:#d92d20;
+    --soft-blue:#eef4ff;
+    --soft-green:#ecfdf3;
+    --soft-yellow:#fffaeb;
+    --soft-gray:#f8fafc;
+    --base:#e8f1ff;
+    --base-strong:#d6e7ff;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans KR",Arial,sans-serif;
+    line-height:1.58;
+  }
+  .wrap{max-width:1500px;margin:0 auto;padding:32px 22px 72px}
+  header{
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:26px 30px;
+    box-shadow:0 8px 28px rgba(16,24,40,.045);
+  }
+  h1{margin:0 0 10px;font-size:29px;letter-spacing:-.04em}
+  h2{margin:38px 0 14px;font-size:22px;letter-spacing:-.03em}
+  h3{margin:20px 0 8px;font-size:17px}
+  p{margin:8px 0 13px}
+  .sub,.small{color:var(--muted);font-size:13px}
+  .pill{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;margin-right:6px}
+  .fixed{background:var(--soft-blue);color:var(--accent-dark)}
+  .free{background:var(--soft-green);color:var(--good)}
+  .toc{margin-top:15px}
+  .toc a{display:inline-block;margin:3px 7px 3px 0;padding:5px 9px;border-radius:8px;background:#fff;border:1px solid var(--line);font-size:13px;color:var(--accent);text-decoration:none}
+  .toc a:hover{text-decoration:underline}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:20px 22px;margin:14px 0;box-shadow:0 4px 16px rgba(16,24,40,.03)}
+  .callout{border-left:4px solid var(--accent);background:var(--soft-blue);padding:13px 15px;border-radius:9px;margin:12px 0}
+  .callout.good{border-left-color:var(--good);background:var(--soft-green)}
+  .callout.warn{border-left-color:var(--warn);background:var(--soft-yellow)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:13px}
+  .rec{color:var(--rec);font-weight:800}
+  .exc{color:#667085;font-weight:800}
+  .matrix-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:14px;background:#fff;box-shadow:0 5px 20px rgba(16,24,40,.035)}
+  table.matrix{border-collapse:separate;border-spacing:0;min-width:2250px;width:100%;font-size:13px;line-height:1.45}
+  .matrix th,.matrix td{padding:12px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);vertical-align:top;text-align:left;background:#fff}
+  .matrix tr:last-child th,.matrix tr:last-child td{border-bottom:0}
+  .matrix th:last-child,.matrix td:last-child{border-right:0}
+  .matrix thead th{background:#f8fafc;color:#344054;font-size:13px;font-weight:800;vertical-align:bottom}
+  .matrix .row-head{position:sticky;left:0;z-index:4;min-width:145px;width:145px;background:#f8fafc;font-weight:800;color:#344054}
+  .matrix thead .row-head{z-index:6}
+  .matrix .base-col{background:var(--base);position:sticky;left:145px;z-index:3;min-width:245px;width:245px}
+  .matrix thead .base-col{background:var(--base-strong);z-index:5}
+  .matrix .combo{min-width:225px;width:225px}
+  .combo-title{font-size:13px;font-weight:800;color:#101828;margin-bottom:5px}
+  .combo-role{font-size:12px;color:var(--muted);font-weight:600}
+  .metric-good{color:var(--good);font-weight:800}
+  .metric-mid{color:var(--warn);font-weight:800}
+  .metric-high{color:#b42318;font-weight:800}
+  .section-note{margin:8px 0 14px;color:var(--muted);font-size:13px}
+  .simple-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+  .simple-step{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+  .simple-step b{display:block;margin-bottom:5px}
+  .badge-num{display:inline-flex;width:28px;height:28px;border-radius:50%;align-items:center;justify-content:center;background:var(--soft-blue);color:var(--accent);font-weight:800;margin-right:7px}
+  .flow{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:pre-wrap;background:#101828;color:#f2f4f7;border-radius:11px;padding:14px 16px;font-size:12.5px;line-height:1.5;margin:10px 0}
+  ul{margin:7px 0 12px;padding-left:20px}li{margin:4px 0}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+  footer{margin-top:38px;color:var(--muted);font-size:12px}
+  @media(max-width:900px){
+    .wrap{padding:20px 12px 56px}
+    header{padding:21px 18px}
+    h1{font-size:25px}
+    .simple-grid{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>모바일 보행 장애물 인식 아키텍처 선택지</h1>
+</header>
+
+
+
+<section id="matrix">
+<h2>2. 전체 조합 비교</h2>
+<p class="section-note">표는 가로로 스크롤할 수 있다. <strong>가장 왼쪽의 파란 열이 현재 고정 기본 모델</strong>이고, 오른쪽으로 갈수록 추가 기능 조합이다. 가장 위 행은 조합명, 바로 아래 행은 상세 모델과 역할이다.</p>
+<div class="legend"><span class="rec">(추천) 실제 후보로 우선 검증</span><span class="exc">(제외) 기본안에서는 우선 제외</span></div>
+
+<div class="matrix-wrap">
+<table class="matrix">
+<thead>
+<tr>
+  <th class="row-head">조합명</th>
+  <th class="base-col combo"><div class="combo-title">기본 모델</div></th>
+  <th class="combo"><div class="combo-title">YOLO26 계열 통합형</div></th>
+  <th class="combo"><div class="combo-title">ARCore 거리형</div></th>
+  <th class="combo"><div class="combo-title">ARCore + 정밀 객체 마스크형</div></th>
+  <th class="combo"><div class="combo-title">경량 AI Depth형</div></th>
+  <th class="combo"><div class="combo-title">고정밀 AI Depth형</div></th>
+  <th class="combo"><div class="combo-title">경량 AI 마스크 + Depth형</div></th>
+  <th class="combo"><div class="combo-title">Depth 제거 · TTC형</div></th>
+  <th class="combo"><div class="combo-title">Depth 제거 · 기하 + TTC형</div></th>
+</tr>
+<tr>
+  <th class="row-head">상세 모델</th>
+  <th class="base-col combo"><div class="combo-role">YOLO26n <b>(장애물 탐지)</b><br>+ Mask2Former <b>(보도 영역 탐지)</b></div></th>
+  <th class="combo"><div class="combo-role">+ YOLO26n-seg <b>(장애물 객체 마스크)</b><br>+ YOLO26n-depth <b>(프레임 깊이 추정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ ARCore Depth <b>(거리·깊이 측정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ EfficientSAM-Ti <b>(장애물 객체 마스크)</b><br>+ ARCore Depth <b>(거리·깊이 측정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ Lite-Mono-Tiny <b>(카메라 영상 기반 깊이 추정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ Depth Anything V2 Small <b>(카메라 영상 기반 깊이 추정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ EfficientSAM-Ti <b>(장애물 객체 마스크)</b><br>+ Lite-Mono-Tiny <b>(깊이 추정)</b></div></th>
+  <th class="combo"><div class="combo-role">+ Optical Flow / Tracking <b>(접근 변화 추적)</b><br>+ TTC <b>(충돌까지 남은 시간 판단)</b></div></th>
+  <th class="combo"><div class="combo-role">+ IMU·카메라 기하 <b>(대략적 거리 계산)</b><br>+ TTC <b>(충돌 위험 판단)</b></div></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+  <th class="row-head">무엇을 추가하나</th>
+  <td class="base-col">추가 없음</td>
+  <td>객체 마스크 + 프레임 전체 깊이</td>
+  <td>장애물까지의 거리·깊이</td>
+  <td>거리 + 장애물 모양을 픽셀 단위로 정밀화</td>
+  <td>RGB 영상만으로 깊이 추정</td>
+  <td>RGB 영상만으로 더 강한 깊이 추정</td>
+  <td>객체 마스크 + RGB 기반 깊이</td>
+  <td>거리 대신 접근 속도와 충돌 위험</td>
+  <td>대략적 거리 + 접근 속도 + 충돌 위험</td>
+</tr>
+<tr>
+  <th class="row-head">주요 출력</th>
+  <td class="base-col">장애물 종류·bbox<br>보도 mask</td>
+  <td>장애물 mask<br>depth map</td>
+  <td>depth map / 거리값</td>
+  <td>장애물 mask<br>객체별 거리 정제</td>
+  <td>상대/추정 depth map</td>
+  <td>상대 또는 metric depth map</td>
+  <td>장애물 mask<br>추정 depth map</td>
+  <td>TTC / 접근 중 여부</td>
+  <td>대략적 거리<br>TTC / 접근 중 여부</td>
+</tr>
+<tr>
+  <th class="row-head">추가 연산 부담</th>
+  <td class="base-col"><span class="metric-good">최소</span></td>
+  <td><span class="metric-high">매우 큼</span><br>seg + depth 모델을 추가 실행</td>
+  <td><span class="metric-good">낮음~중간</span></td>
+  <td><span class="metric-mid">중간</span><br>EfficientSAM은 조건부 실행 권장</td>
+  <td><span class="metric-mid">중간</span></td>
+  <td><span class="metric-high">큼</span></td>
+  <td><span class="metric-high">중간~큼</span></td>
+  <td><span class="metric-good">매우 낮음</span></td>
+  <td><span class="metric-good">낮음</span></td>
+</tr>
+<tr>
+  <th class="row-head">실시간 적용성</th>
+  <td class="base-col"><span class="metric-good">가장 높음</span></td>
+  <td><span class="metric-high">낮음</span></td>
+  <td><span class="metric-good">높음</span></td>
+  <td><span class="metric-mid">중간~높음</span></td>
+  <td><span class="metric-mid">중간</span></td>
+  <td><span class="metric-high">낮음~중간</span></td>
+  <td><span class="metric-mid">중간</span></td>
+  <td><span class="metric-good">매우 높음</span></td>
+  <td><span class="metric-good">높음</span></td>
+</tr>
+<tr>
+  <th class="row-head">플랫폼</th>
+  <td class="base-col">모델 export 방식에 따라 모바일 적용 가능</td>
+  <td>모델 export 방식에 따라 모바일 적용 가능</td>
+  <td>ARCore Depth 지원 환경 필요</td>
+  <td>ARCore Depth 지원 환경 필요</td>
+  <td>모델 런타임만 맞추면 여러 플랫폼 적용 가능</td>
+  <td>모델 런타임만 맞추면 여러 플랫폼 적용 가능</td>
+  <td>모델 런타임만 맞추면 여러 플랫폼 적용 가능</td>
+  <td>카메라·추적 API가 있으면 구현 가능</td>
+  <td>IMU·카메라 intrinsic 접근이 가능하면 구현 가능</td>
+</tr>
+<tr>
+  <th class="row-head">비용·라이선스</th>
+  <td class="base-col">추가 API 비용 없음<br><span class="small">YOLO26n은 Ultralytics 라이선스 조건 확인 필요</span></td>
+  <td>추가 클라우드 비용 없음<br><span class="small">YOLO 계열 동일 라이선스 고려</span></td>
+  <td>ARCore Depth 자체 사용량 기반 과금 없음</td>
+  <td>ARCore Depth 과금 없음<br>EfficientSAM Apache-2.0</td>
+  <td>MIT<br>별도 API 비용 없음</td>
+  <td>Small 모델 Apache-2.0<br>별도 API 비용 없음</td>
+  <td>Apache-2.0 + MIT<br>별도 API 비용 없음</td>
+  <td>추가 모델/API 비용 거의 없음</td>
+  <td>추가 모델/API 비용 거의 없음</td>
+</tr>
+<tr>
+  <th class="row-head">적용 시 주의점</th>
+  <td class="base-col">거리 정보가 없음</td>
+  <td>기능은 한 생태계로 통일되지만 같은 프레임에 여러 모델을 반복 적용</td>
+  <td>지원 기기에서 실제 거리 오차와 발열을 현장 검증</td>
+  <td>모든 객체에 SAM을 돌리지 말고 위험 후보에만 실행</td>
+  <td>공개 가중치가 야외 보도·세로 촬영 환경에 맞는지 검증 필요<br>절대 m 단위는 보정 가능성 있음</td>
+  <td>Mask2Former와 함께 상시 실행하면 발열·지연 부담이 커질 수 있음</td>
+  <td>모델 2개가 추가되므로 비동기·조건부 추론이 사실상 필수</td>
+  <td>정확한 “몇 m” 안내는 어려움</td>
+  <td>평지·지면 접촉 객체에 유리하지만 경사·계단·가림에 취약</td>
+</tr>
+<tr>
+  <th class="row-head">핵심 판단</th>
+  <td class="base-col">모든 비교의 기준점. 먼저 이 상태의 FPS·발열·정확도를 측정해야 함.</td>
+  <td>기능은 가장 많이 얻지만 현재 고정 모델까지 포함하면 모바일 상시 운용 부담이 큼.</td>
+  <td>별도 depth AI 모델을 추가하지 않고 거리 정보를 얻는 가장 직접적인 선택지.</td>
+  <td>ARCore 거리값이 bbox 배경 때문에 흔들릴 때 객체 영역만 잘라 쓰기 위한 보완안.</td>
+  <td>AR SDK 없이 AI만으로 깊이를 만들고 싶을 때 가장 가벼운 후보 중 하나.</td>
+  <td>depth 품질 비교용으로는 유용하지만 실시간 기본안으로는 무거움.</td>
+  <td>AR 의존 없이 마스크와 depth를 모두 만들 수 있지만 모델 수가 늘어남.</td>
+  <td>프로젝트 목적이 “몇 m”보다 “곧 부딪히는가”라면 매우 효율적.</td>
+  <td>Depth 모델 없이도 거리까지 일부 복원하고 싶을 때 현실적인 초경량안.</td>
+</tr>
+<tr>
+  <th class="row-head">추천 / 제외 이유</th>
+  <td class="base-col"><span class="rec">(추천)</span> 먼저 기준 성능을 측정해야 이후 추가 모듈의 효과를 판단할 수 있음.</td>
+  <td><span class="exc">(제외)</span> YOLO26n-seg와 YOLO26n-depth까지 모두 상시 추가하면 Mask2Former가 있는 현재 구조에서 연산 중복이 큼.</td>
+  <td><span class="rec">(추천)</span> 거리 정보가 꼭 필요하다면 가장 먼저 실제 기기에서 검증할 조합.</td>
+  <td><span class="rec">(추천)</span> 단, 처음부터 넣지 말고 ARCore + bbox만으로 거리 오차가 클 때 2차로 추가.</td>
+  <td><span class="rec">(추천)</span> ARCore 대안이 필요할 때 비교할 경량 AI Depth 후보. 단, 거리 보정 검증 필요.</td>
+  <td><span class="exc">(제외)</span> 기본 실시간안으로는 무거움. 정확도 상한 비교 또는 저주기 실행용으로만 검토.</td>
+  <td><span class="exc">(제외)</span> 처음부터 두 모델을 동시에 추가할 이유가 적음. 각 기능이 실제로 필요하다는 증거가 생긴 뒤 검토.</td>
+  <td><span class="rec">(추천)</span> 절대 거리값이 필수가 아니라면 가장 가벼운 실시간 후보.</td>
+  <td><span class="rec">(추천)</span> 거리 숫자도 어느 정도 필요하지만 추가 depth 모델은 피하고 싶을 때 비교 가치가 큼.</td>
+</tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<section id="decision">
+<h2>3. 쉽게 고르는 순서</h2>
+<div class="simple-grid">
+  <div class="simple-step"><b><span class="badge-num">1</span>기준부터 측정</b>먼저 <strong>YOLO26n + Mask2Former</strong>만 실행해서 실제 스마트폰의 FPS, 지연시간, 발열을 기록한다.</div>
+  <div class="simple-step"><b><span class="badge-num">2</span>거리 정보가 꼭 필요한지 확인</b>정확한 거리값이 필요하면 <strong>ARCore Depth</strong>를 먼저 붙인다. “곧 충돌하는가”만 중요하면 <strong>TTC형</strong>을 먼저 시험한다.</div>
+  <div class="simple-step"><b><span class="badge-num">3</span>ARCore 대안이 필요하면</b><strong>Lite-Mono-Tiny</strong>를 비교한다. 깊이 품질을 더 보고 싶으면 Depth Anything V2는 저주기 비교용으로만 사용한다.</div>
+</div>
+
+<div class="card">
+  <h3>추천 실험은 처음부터 많게 잡지 않는다</h3>
+  <div class="flow">기준안
+YOLO26n + Mask2Former
+
+① 거리 필요 → + ARCore Depth
+② 거리 숫자 불필요 → + TTC
+③ ARCore 대안 필요 → + Lite-Mono-Tiny
+
+그 뒤 실제 오류가 있을 때만
+→ EfficientSAM-Ti 추가</div>
+  <p><strong>EfficientSAM-Ti는 “필수 모델”이 아니다.</strong> YOLO bbox 안에 배경 픽셀이 섞여 거리값이 자주 틀어지는 문제가 확인될 때만 장애물 마스크 정밀화 용도로 추가한다.</p>
+</div>
+</section>
+
+<section id="runtime">
+<h2>4. 실시간 구현에서 꼭 지킬 것</h2>
+<div class="card">
+<ul>
+  <li><b>모든 모델을 카메라 FPS와 1:1로 돌리지 않는다.</b> YOLO, Mask2Former, Depth는 서로 다른 주기로 실행 가능하다.</li>
+  <li><b>프레임 큐를 길게 쌓지 않는다.</b> 추론 중 새 프레임이 들어오면 오래된 프레임은 버리고 최신 프레임을 사용한다.</li>
+  <li><b>ROI를 유지한다.</b> 이미 효과가 확인된 진행방향 ROI를 위험 판단과 후속 모듈 실행 조건으로 활용한다.</li>
+  <li><b>평균 FPS만 보지 않는다.</b> end-to-end latency, 발열, 배터리, 장애물 miss rate, 거리오차를 같이 측정한다.</li>
+  <li><b>조건부 실행을 사용한다.</b> EfficientSAM 같은 추가 모듈은 “보도 위 + ROI 안 + 위험 후보”일 때만 실행한다.</li>
+</ul>
+</div>
+</section>
+
+<section id="sources">
+<h2>5. 주요 공식 출처</h2>
+<ul>
+<li><a href="https://developers.google.com/ar/develop/depth" target="_blank">Google ARCore Depth overview</a></li>
+<li><a href="https://developers.google.com/ar/develop/c/geospatial/api-usage-quota" target="_blank">ARCore Geospatial quota</a></li>
+<li><a href="https://developers.google.com/ar/develop/java/cloud-anchors/developer-guide" target="_blank">Cloud Anchors guide / quota</a></li>
+<li><a href="https://docs.ultralytics.com/models/yolo26" target="_blank">Ultralytics YOLO26</a></li>
+<li><a href="https://www.ultralytics.com/license" target="_blank">Ultralytics licensing</a></li>
+<li><a href="https://docs.ultralytics.com/tasks/segment" target="_blank">YOLO26 Segmentation</a></li>
+<li><a href="https://docs.ultralytics.com/tasks/depth" target="_blank">YOLO26 Depth</a></li>
+<li><a href="https://github.com/yformer/EfficientSAM" target="_blank">EfficientSAM</a></li>
+<li><a href="https://github.com/noahzn/Lite-Mono" target="_blank">Lite-Mono</a></li>
+<li><a href="https://github.com/DepthAnything/Depth-Anything-V2" target="_blank">Depth Anything V2</a></li>
+</ul>
+</section>
+
+<footer>
+이 문서는 후보를 빠르게 좁히기 위한 기술 선택안이다. 실시간성 평가는 상대 비교이며, 최종 선택 전 목표 스마트폰에서 end-to-end 프로파일링이 필요하다.
+</footer>
+</div>
+</body>
+</html>

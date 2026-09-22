@@ -18,6 +18,10 @@ from src.sidewalk import SidewalkSegmenter
 from src.obstacle import ObstacleDetector, validate_yolo_config
 from src.visualization import draw_detections, overlay_segmentation, draw_traffic
 from src.traffic import TrafficSignalPipeline, validate_traffic_config
+from src.risk import RiskEngine, VideoClock
+from src.risk_config import risk_config as normalize_risk, tracking_config as normalize_tracking
+from src.risk_visualization import draw_risk
+from src.risk_log import RiskLog
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -72,7 +76,8 @@ def find_sample_videos(sample_dir):
 
 
 # 영상 한 개 처리
-def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=None, traffic=None):
+def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=None, traffic=None,
+                  risk_config=None, tracking_config=None):
     """임시 MP4로 처리한 뒤 프레임 수 확인에 성공하면 최종 파일을 저장한다."""
     if segmenter is None and detector is None and traffic is None:
         raise ValueError("도보, 장애물 또는 신호등 모델이 하나 이상 필요합니다.")
@@ -84,10 +89,17 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
     if output_path.suffix.lower() != ".mp4":
         raise ValueError("결과 영상 확장자는 .mp4여야 합니다.")
 
+    risk_settings = normalize_risk(risk_config)
+    risk_enabled = risk_settings["enabled"] and detector is not None
+    if risk_enabled and risk_settings["log_jsonl"] and output_path.with_suffix(".risk.jsonl").exists():
+        raise FileExistsError(f"Risk log already exists: {output_path.with_suffix('.risk.jsonl')}")
     capture = cv2.VideoCapture(str(video_path))
     writer = None
     temporary_path = None
     processed_frames = 0
+    risk_log = None
+    committed = False
+    engine = None
     try:
         if not capture.isOpened():
             raise RuntimeError(f"영상을 열 수 없습니다: {video_path}")
@@ -125,13 +137,32 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
         if traffic is not None:
             traffic.reset()
 
+        if risk_enabled:
+            engine = RiskEngine(risk_settings, tracking_config)
+            clock = VideoClock(fps)
+            if risk_settings["log_jsonl"]:
+                risk_log = RiskLog(output_path)
+
         while True:
             success, frame = capture.read()
             if not success:
                 break
             # 모든 모델이 색칠 전의 같은 원본 프레임 사용
-            class_map = segmenter.predict(frame) if segmenter is not None else None
             detections = detector.predict(frame) if detector is not None else []
+            class_map = segmenter.predict(frame) if segmenter is not None else None
+            risk_result = None
+            if engine is not None:
+                timestamp, valid_time, time_source = clock.read(
+                    capture.get(cv2.CAP_PROP_POS_MSEC), processed_frames)
+                risk_result = engine.update(frame, detections, timestamp, valid_time, class_map,
+                    segmenter.label_ids if segmenter is not None else None)
+                risk_result.update(frame_index=processed_frames, timestamp_source=time_source)
+                if processed_frames == 0:
+                    risk_result.update(risk_config=risk_settings,
+                                       tracking_config=normalize_tracking(tracking_config))
+            if risk_result is not None:
+                engine.add_sidewalk_context(risk_result, class_map,
+                    segmenter.label_ids if segmenter is not None else None, frame.shape)
             traffic_result = traffic.predict(
                 frame, frame_id=processed_frames + 1,
                 captured_at_ms=processed_frames * 1000 / fps,
@@ -145,6 +176,10 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
             )
             if detector is not None:
                 result = draw_detections(result, detections)
+            if risk_result is not None:
+                result = draw_risk(result, risk_result, risk_settings)
+                if risk_log is not None:
+                    risk_log.write(risk_result)
             if traffic_result is not None:
                 result = draw_traffic(result, traffic_result)
             writer.write(result)
@@ -165,7 +200,10 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
         # 인코딩 종료 후 최종 이름 등록, 기존 파일 덮어쓰기 금지
         writer.release()
         writer = None
+        if risk_log is not None:
+            risk_log.publish()
         os.link(temporary_path, output_path)
+        committed = True
     finally:
         try:
             capture.release()
@@ -175,6 +213,8 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
             # 성공·오류·Ctrl+C 모두 이번 작업의 임시 파일만 정리
             if temporary_path is not None:
                 temporary_path.unlink(missing_ok=True)
+            if risk_log is not None:
+                risk_log.finish(committed)
     print(f"\n결과 영상 저장: {output_path}")
     return processed_frames
 
@@ -195,6 +235,7 @@ def run_video_inference(
     imgsz=None,
     traffic_weights=None,
     traffic_classifier_weights=None,
+    risk=None,
 ):
     """명령어 옵션을 설정에 우선 적용하고 모든 대상 영상을 처리한다."""
     if video_path is not None and sample_dir is not None:
@@ -217,6 +258,13 @@ def run_video_inference(
             if value is not None:
                 yolo_config[key] = str(value) if key == "weights" else value
         validate_yolo_config(yolo_config)
+    risk_settings = normalize_risk({"enabled": False})
+    tracking_settings = None
+    if mode in ("both", "obstacle", "all"):
+        risk_settings = normalize_risk(config.get("risk"))
+        if risk is not None:
+            risk_settings = normalize_risk({**risk_settings, "enabled": risk})
+        tracking_settings = normalize_tracking(config.get("tracking"))
     traffic_config = {}
     if mode in ("traffic", "all"):
         if not isinstance(config.get("traffic", {}), dict):
@@ -254,6 +302,8 @@ def run_video_inference(
             raise FileNotFoundError(f"출력 폴더가 없습니다: {output.parent}")
         if output.exists():
             raise FileExistsError(f"결과 영상이 이미 있습니다: {output}")
+        if risk_settings["enabled"] and risk_settings["log_jsonl"] and output.with_suffix(".risk.jsonl").exists():
+            raise FileExistsError(f"Risk log already exists: {output.with_suffix('.risk.jsonl')}")
 
     # 사용할 모델만 로딩, 모든 영상에서 재사용
     detector = None
@@ -285,5 +335,6 @@ def run_video_inference(
     print(f"추론 모드: {mode} | 장치: {device}")
     for index, (video, output) in enumerate(zip(videos, outputs), start=1):
         print(f"입력 영상 [{index}/{len(videos)}]: {video}")
-        process_video(video, output, segmenter, config["overlay_alpha"], detector=detector, traffic=traffic)
+        process_video(video, output, segmenter, config["overlay_alpha"], detector=detector,
+                      traffic=traffic, risk_config=risk_settings, tracking_config=tracking_settings)
     return outputs

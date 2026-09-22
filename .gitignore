@@ -1,6 +1,11 @@
 # Python 가상환경
 .venv/
 venv/
+obs_env/
+env/
+ENV/
+*.egg-info/
+pyvenv.cfg
 
 # Python 캐시 및 테스트 결과
 __pycache__/
@@ -37,3 +42,8 @@ Thumbs.db
 
 .agents/
 AGENTS.md
+.claude/
+CLAUDE.md
+
+# WSL 다운로드 부산물
+*:Zone.Identifier

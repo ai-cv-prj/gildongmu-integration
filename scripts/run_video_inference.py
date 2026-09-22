@@ -38,6 +38,8 @@ def main():
     parser.add_argument("--yolo-weights", type=Path, help="YOLO .pt 가중치 경로")
     parser.add_argument("--conf", type=float, help="YOLO 신뢰도 기준")
     parser.add_argument("--imgsz", type=int, help="YOLO 입력 크기")
+    parser.add_argument("--risk", action=argparse.BooleanOptionalAction, default=None,
+                        help="experimental obstacle risk overlay and JSONL (--no-risk disables)")
     args = parser.parse_args()
 
     # 도움말 확인에는 추론 패키지 로딩 생략
@@ -57,6 +59,7 @@ def main():
         imgsz=args.imgsz,
         traffic_weights=args.traffic_weights,
         traffic_classifier_weights=args.traffic_classifier_weights,
+        risk=args.risk,
     )
 
 

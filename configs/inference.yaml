@@ -98,7 +98,8 @@ risk:
   repeat_cooldown_s: 2.0
   event_match_iou: 0.3
   draw_roi: true
-  review_overlay: false
+  # 큰 검토용 오버레이(채운 ROI·카드 라벨·하단 요약 패널)로 표시한다. false면 간략 표시.
+  review_overlay: true
   log_jsonl: true
   # Shared image profile: no individual body dimensions, depth or ground-height model.
   side_proximity_enabled: true

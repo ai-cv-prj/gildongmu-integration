@@ -42,6 +42,8 @@ Thumbs.db
 
 .agents/
 AGENTS.md
+.claude/
+CLAUDE.md
 
 # WSL 다운로드 부산물
 *:Zone.Identifier

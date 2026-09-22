@@ -1,6 +1,6 @@
 """보행자 신호등 YOLO → 횡단보도 연결 → MobileNetV3 색상 분류.
 
-선택 로직은 ai_cv_prj의 runtime/association.py를 함께 이식한다.
+선택 로직은 gildongmu-test-app의 SESAC-73 버전을 이식한다.
 입출력 좌표는 원본 BGR 프레임 픽셀 기준이다.
 """
 import math
@@ -9,7 +9,7 @@ from pathlib import Path
 import cv2
 import torch
 
-from src.traffic_association import TemporalSelector, associate
+from src.traffic_association import FrameContext, TemporalSelector, crosswalk_diagnostics
 
 
 CLASS_NAMES = {0: "pedestrian_signal", 1: "crosswalk"}
@@ -87,6 +87,7 @@ class TrafficSignalPipeline:
     def reset(self):
         """영상이 바뀌면 이전 영상의 선택 이력을 비운다."""
         self.selector = TemporalSelector(self.config["association_stable_frames"])
+        self.frame_id = 0
 
     def _classify(self, frame, box):
         """학습 때와 동일한 여백·비율 유지·검정 패딩·ImageNet 정규화."""
@@ -115,17 +116,25 @@ class TrafficSignalPipeline:
         return (color if confidence >= self.config["classifier_min_confidence"] else "unknown",
                 confidence)
 
-    def predict(self, frame):
-        """후보 전체는 내부에서 비교하고 표시용 신호등은 최대 1개만 반환한다."""
+    def predict(self, frame, *, frame_id=None, captured_at_ms=None):
+        """모든 검출을 반환하고 현재 선택 대상만 분류한다.
+
+        영상 처리기는 프레임 번호와 영상 시각을 전달한다. 직접 호출 시에는
+        연속 번호와 200ms 간격을 사용하며, 영상이 바뀌면 reset()해야 한다.
+        """
+        frame_id = self.frame_id + 1 if frame_id is None else frame_id
+        captured_at_ms = (frame_id - 1) * 200 if captured_at_ms is None else captured_at_ms
+        context = FrameContext(frame_id, captured_at_ms)
+        self.frame_id = frame_id
+        detector_confidence = min(self.config["conf"], self.config["crosswalk_min_confidence"])
         result = self.detector.predict(
-            source=frame, imgsz=self.config["imgsz"],
-            conf=min(self.config["conf"], self.config["crosswalk_min_confidence"]),
-            device=self.device, verbose=False, save=False, save_txt=False,
+            source=frame, imgsz=self.config["imgsz"], conf=detector_confidence,
+            device=self.device, quantize=32, verbose=False, save=False, save_txt=False,
             save_crop=False, stream=False,
         )[0]
         if tuple(result.orig_shape) != frame.shape[:2]:
             raise ValueError("신호등 YOLO 결과와 원본 프레임의 크기가 다릅니다.")
-        signals, crosswalks = [], []
+        signals, crosswalks, candidates = [], [], []
         if result.boxes is not None:
             boxes = result.boxes.cpu()
             for xyxy, score, cid in zip(boxes.xyxy.tolist(), boxes.conf.tolist(), boxes.cls.tolist()):
@@ -134,21 +143,36 @@ class TrafficSignalPipeline:
                         "class_id": cid, "class_name": CLASS_NAMES[cid]}
                 if cid == 0 and score >= self.config["conf"]:
                     signals.append(item)
-                elif cid == 1 and score >= self.config["crosswalk_min_confidence"]:
-                    crosswalks.append(item)
-        decision = self.selector.update(
-            associate(frame, signals, crosswalks, cv2), signals, crosswalks
+                elif cid == 1 and score >= detector_confidence:
+                    candidates.append(item)
+                    if score >= self.config["crosswalk_min_confidence"]:
+                        crosswalks.append(item)
+        decision = self.selector.select(frame, signals, crosswalks, cv2, context)
+        selected_index = decision.get("signal_index")
+        candidate_index = decision.get("candidate_signal_index")
+        visible, state = [], "unknown"
+        for index, signal in enumerate(signals):
+            color, score = "unknown", None
+            selection = "unselected"
+            if index == selected_index:
+                color, score = self._classify(frame, signal["xyxy"])
+                state, selection = color, "selected"
+            elif index == candidate_index:
+                selection = "candidate"
+            visible.append({**signal, "signal_state": color, "color_confidence": score,
+                            "selection_status": selection,
+                            "track_id": decision.get("track_id") if selection == "selected" else None})
+        height, width = frame.shape[:2]
+        crossing_boxes, diagnostics = crosswalk_diagnostics(
+            candidates, crosswalks, decision, width, height,
+            self.config["crosswalk_min_confidence"],
         )
-        index = decision.get("signal_index")
-        confirmed = decision["status"] in {"single_signal", "matched"}
-        if index is None:
-            index = decision.get("candidate_signal_index")
-        visible, color = [], "unknown"
-        if index is not None:
-            selected = dict(signals[index])
-            color, score = self._classify(frame, selected["xyxy"]) if confirmed else ("unknown", None)
-            selected.update(signal_state=color, color_confidence=score)
-            visible.append(selected)
-        decision["color"] = color
-        return {"detections": visible, "crosswalks": crosswalks, "association": decision,
-                "signal_state": color, "detected_signal_count": len(signals)}
+        diagnostics["detector_confidence"] = detector_confidence
+        decision["color"] = state
+        return {"detections": visible, "crosswalks": crossing_boxes, "association": decision,
+                "signal_state": state, "detected_signal_count": len(signals),
+                "selected_detection_index": selected_index,
+                "candidate_detection_index": candidate_index,
+                "detected_crosswalk_count": len(crosswalks),
+                "crosswalk_candidate_count": len(candidates),
+                "crosswalk_diagnostics": diagnostics}

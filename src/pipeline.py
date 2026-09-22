@@ -163,7 +163,10 @@ def process_video(video_path, output_path, segmenter=None, alpha=0.55, detector=
             if risk_result is not None:
                 engine.add_sidewalk_context(risk_result, class_map,
                     segmenter.label_ids if segmenter is not None else None, frame.shape)
-            traffic_result = traffic.predict(frame) if traffic is not None else None
+            traffic_result = traffic.predict(
+                frame, frame_id=processed_frames + 1,
+                captured_at_ms=processed_frames * 1000 / fps,
+            ) if traffic is not None else None
             if traffic_result is not None:
                 # 일반 장애물 모델의 traffic_light 박스와 대상 신호등 표시가 겹치지 않게 한다.
                 detections = [item for item in detections if item["class_name"] != "traffic_light"]

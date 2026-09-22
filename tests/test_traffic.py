@@ -57,7 +57,8 @@ class TrafficTests(unittest.TestCase):
             for _ in range(2):
                 result = pipeline.predict(FRAME)
                 self.assertEqual(result["signal_state"], "unknown")
-                self.assertEqual(len(result["detections"]), 1)
+                self.assertEqual(len(result["detections"]), 2)
+                self.assertEqual(result["detections"][0]["selection_status"], "candidate")
                 pipeline._classify.assert_not_called()
             result = pipeline.predict(FRAME)
         self.assertEqual(result["association"]["status"], "matched")
@@ -68,7 +69,8 @@ class TrafficTests(unittest.TestCase):
     def test_multiple_without_crosswalk_does_not_guess(self):
         pipeline = fake_pipeline([(NEAR, 0.9, 0), (FAR, 0.9, 0)])
         result = pipeline.predict(FRAME)
-        self.assertEqual(result["detections"], [])
+        self.assertEqual(len(result["detections"]), 2)
+        self.assertTrue(all(d["selection_status"] == "unselected" for d in result["detections"]))
         self.assertEqual(result["signal_state"], "unknown")
         pipeline._classify.assert_not_called()
 
@@ -146,7 +148,7 @@ class TrafficTests(unittest.TestCase):
         rendered = draw_traffic(frame, result)
         np.testing.assert_array_equal(frame, FRAME)
         self.assertEqual(rendered[100, 600].tolist(), [0, 255, 0])
-        self.assertEqual(rendered[350, 300].tolist(), [180, 105, 255])
+        self.assertEqual(rendered[350, 300].tolist(), [255, 123, 181])
 
     def test_invalid_settings(self):
         config = {"weights": "yolo.pt", "classifier_weights": "classifier.pt"}
@@ -208,6 +210,7 @@ class TrafficTests(unittest.TestCase):
         self.assertEqual(traffic.reset.call_count, 2)
         self.assertEqual(draw.call_args.args[1], [{"class_name": "person"}])
         np.testing.assert_array_equal(traffic.predict.call_args.args[0], FRAME)
+        self.assertEqual(traffic.predict.call_args.kwargs, {"frame_id": 1, "captured_at_ms": 0.0})
 
     def test_traffic_failure_does_not_publish_partial_video(self):
         traffic = SimpleNamespace(reset=Mock(), predict=Mock(side_effect=RuntimeError("traffic failed")))

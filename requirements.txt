@@ -6,11 +6,11 @@ torchvision==0.29.0
 transformers==5.17.0
 opencv-python==5.0.0.93
 ultralytics==8.4.152
+lap==0.5.13 # 장애물·신호등 BoT-SORT 객체 매칭
 numpy==2.5.3
 Pillow==12.3.0
 PyYAML==6.0.3
 scipy==1.18.1
-lap==0.5.12
 
 # Optional batch review video encoding (CPU FFmpeg binary)
 imageio-ffmpeg==0.6.0

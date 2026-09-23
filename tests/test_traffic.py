@@ -104,9 +104,9 @@ class TrafficTests(unittest.TestCase):
     def test_box_identity_survives_detection_order_change(self):
         selector = TemporalSelector(2)
         decision = {"status": "candidate", "signal_index": 0, "crosswalk_index": 0}
-        selector.update(dict(decision), [{"xyxy": NEAR}, {"xyxy": FAR}], [{"xyxy": CROSSWALK}])
+        selector.update(dict(decision), [{"xyxy": NEAR, "track_id": 1}, {"xyxy": FAR, "track_id": 2}], [{"xyxy": CROSSWALK}])
         decision["signal_index"] = 1
-        result = selector.update(decision, [{"xyxy": FAR}, {"xyxy": NEAR}], [{"xyxy": CROSSWALK}])
+        result = selector.update(decision, [{"xyxy": FAR, "track_id": 2}, {"xyxy": NEAR, "track_id": 1}], [{"xyxy": CROSSWALK}])
         self.assertEqual(result["status"], "matched")
 
     def test_thresholds_for_signals_and_crosswalks_are_independent(self):
@@ -115,7 +115,7 @@ class TrafficTests(unittest.TestCase):
         result = pipeline.predict(FRAME)
         self.assertEqual(result["detected_signal_count"], 1)
         self.assertEqual(len(result["crosswalks"]), 1)
-        self.assertEqual(pipeline.detector.predict.call_args.kwargs["conf"], 0.5)
+        self.assertEqual(pipeline.detector.predict.call_args.kwargs["conf"], 0.1)
 
     def test_classifier_uses_checkpoint_order_and_confidence(self):
         pipeline = fake_pipeline([])

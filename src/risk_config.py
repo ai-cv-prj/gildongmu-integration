@@ -66,6 +66,12 @@ DEFAULT_RISK.update({
     "warning_grouping_enabled":False,
     "warning_group_iou":.65, "warning_group_containment":.85,
     "warning_group_max_area_ratio":1.60,
+    "walkable_surroundings_filter_enabled":False,
+    "surrounding_side_width_ratio":.15, "surrounding_side_height_ratio":.40,
+    "surrounding_bottom_height_ratio":.10,
+    "surrounding_max_side_width_ratio":.02,
+    "surrounding_max_bottom_height_ratio":.02,
+    "surrounding_min_region_pixels":4, "surrounding_walkable_threshold":.05,
 })
 DEFAULT_TRACKING = {
     "enabled": True, "backend": "botsort",
@@ -104,13 +110,16 @@ def risk_config(value=None):
             raise ValueError(f"risk.{key}: must be a convex polygon in [0,1]")
     for key in ("roi_ground_adapt_enabled","side_proximity_enabled","full_static_footprint","relative_entry_enabled",
                 "roi_recalibration_enabled","surface_risk_enabled","class_bridge_enabled",
-                "warning_grouping_enabled"):
+                "warning_grouping_enabled","walkable_surroundings_filter_enabled"):
         if not isinstance(cfg[key],bool):
             raise ValueError(f"risk.{key} must be boolean")
     for key in ("side_near_y","side_min_height","side_min_width","roi_jitter_shift",
                 "roi_large_shift","roi_candidate_spread","surface_min_area",
                 "surface_band_fraction","surface_unstable_change","warning_group_iou",
-                "warning_group_containment"):
+                "warning_group_containment","surrounding_side_width_ratio",
+                "surrounding_side_height_ratio","surrounding_bottom_height_ratio",
+                "surrounding_max_side_width_ratio","surrounding_max_bottom_height_ratio",
+                "surrounding_walkable_threshold"):
         _number(cfg[key],f"risk.{key}",0,1,True)
     for key in ("roi_change_confirm_s","roi_small_confirm_s","surface_confirm_s",
                 "surface_clear_s","visibility_advisory_s"):
@@ -135,6 +144,9 @@ def risk_config(value=None):
     names = cfg["static_ground_classes"]
     if not isinstance(names, list) or any(not isinstance(n, str) or not n for n in names):
         raise ValueError("static_ground_classes must be a list of class names")
+    pixels = cfg["surrounding_min_region_pixels"]
+    if isinstance(pixels, bool) or not isinstance(pixels, int) or pixels < 1:
+        raise ValueError("surrounding_min_region_pixels must be a positive integer")
     if cfg["exit_overlap_threshold"] >= cfg["overlap_threshold"]:
         raise ValueError("exit overlap must be below entry overlap")
     if cfg["static_caution_y"] >= cfg["static_danger_y"]:

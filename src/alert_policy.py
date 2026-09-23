@@ -75,6 +75,7 @@ class AlertPolicy:
                 state["clear_target"]=None
             else:
                 evidence=item.get("release_evidence")
+                immediate=evidence=="nonwalkable_surroundings"
                 if evidence:
                     if state["clear_since"] is None or state["clear_target"]!=raw:
                         state["clear_since"]=timestamp
@@ -82,7 +83,8 @@ class AlertPolicy:
                 else:
                     state["clear_since"]=None
                     state["clear_target"]=None
-                confirmed=state["clear_since"] is not None and timestamp-state["clear_since"]+1e-9>=self.cfg["clear_confirm_s"]
+                confirmed=(immediate or state["clear_since"] is not None
+                           and timestamp-state["clear_since"]+1e-9>=self.cfg["clear_confirm_s"])
                 if confirmed:
                     release_reason=evidence
                     status="clear_confirmed" if raw=="monitor" else "active"

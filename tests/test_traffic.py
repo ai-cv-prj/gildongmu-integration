@@ -148,7 +148,7 @@ class TrafficTests(unittest.TestCase):
         rendered = draw_traffic(frame, result)
         np.testing.assert_array_equal(frame, FRAME)
         self.assertEqual(rendered[100, 600].tolist(), [0, 255, 0])
-        self.assertEqual(rendered[350, 300].tolist(), [255, 123, 181])
+        np.testing.assert_array_equal(rendered[350:], frame[350:])
 
     def test_invalid_settings(self):
         config = {"weights": "yolo.pt", "classifier_weights": "classifier.pt"}

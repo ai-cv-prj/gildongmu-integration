@@ -59,23 +59,25 @@
 | 필드 | 의미 |
 | --- | --- |
 | `detections` | 중복·미연결 저신뢰 검출 제거 후 신호등. 픽셀 `xyxy`, `confidence`, `selection_status`, `signal_state`, `color_confidence`, `track_id` |
-| `crosswalks` | 표시 가능한 횡단보도. 픽셀 `xyxy`, 신뢰도, `crosswalk_status`, `exclusion_reasons` |
+| `crosswalks` | 내부 판단·진단용 횡단보도. 픽셀 `xyxy`, 신뢰도, `crosswalk_status`, `exclusion_reasons` |
 | `selected_detection_index` / `candidate_detection_index` | 현재 `detections`의 선택/확인 중 인덱스. 객체 ID와 다름 |
 | `detected_signal_count` | 필터 적용 후 표시·선택에 사용하는 신호등 수 |
 | `raw_detected_signal_count` | 중복 제거·추적 연결 필터 적용 전 신호등 검출 수 |
 | `suppressed_signal_count` | 중복으로 제거한 신호등 수 |
 | `unmatched_low_confidence_count` | 중복 제거 후 기존 객체와 연결되지 않아 제외한 낮은 신뢰도 신호등 수 |
-| `detected_crosswalk_count` / `crosswalk_candidate_count` | 연결 기준 통과 수 / 표시 횡단보도 수 |
-| `crosswalk_diagnostics` | 검출·연결 상태, 기준 통과 수, 표시 목록의 `selected_crosswalk_index` |
+| `detected_crosswalk_count` / `crosswalk_candidate_count` | 연결 기준 통과 수 / 횡단보도 후보 수 |
+| `crosswalk_diagnostics` | 검출·연결 상태, 기준 통과 수, 후보 목록의 `selected_crosswalk_index` |
 | `association` | 선택 사유, 추적 번호, `tracking.tracker=botsort`, 횡단보도용 `tracking.camera_motion`, `selection_origin` |
 
 `association.crosswalk_index`는 연결 기준 통과 목록의 인덱스입니다.
-표시 박스는 `crosswalk_diagnostics.selected_crosswalk_index` 또는 `crosswalk_status=used`로 찾습니다.
+진단 목록의 연결 박스는 `crosswalk_diagnostics.selected_crosswalk_index` 또는 `crosswalk_status=used`로 찾습니다.
 확인 중에는 최종 선택 인덱스·색상 신뢰도가 null이고 최종 색상은 unknown입니다.
 영상마다 ID가 다시 시작하므로 서로 다른 영상의 같은 번호는 동일 객체를 의미하지 않습니다.
 
 OpenCV 결과 영상은 영문 라벨을 사용합니다. TARGET·CANDIDATE·UNSELECTED 모두 객체 ID를 표시하고,
-검출 신뢰도(det)와 색상 신뢰도(color)를 구분합니다. 청록 횡단보도는 연결 판단에 사용됐다는 표시입니다.
+검출 신뢰도(det)와 색상 신뢰도(color)를 구분합니다. 테스트 앱처럼 횡단보도 박스·라벨,
+소실점·연결선과 하단 횡단보도 진단 패널은 표시하지 않습니다. 횡단보도 검출·연결 판단과
+반환 진단 데이터는 유지하며, 도보 모듈의 핑크색 횡단보도 마스크도 그대로 표시합니다.
 
 ## 모델·의존성·실행
 

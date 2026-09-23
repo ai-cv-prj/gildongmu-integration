@@ -71,12 +71,11 @@ def overlay_segmentation(frame, class_map, label_ids, alpha=0.55):
 
 
 def draw_traffic(frame, prediction):
-    """전체 검출·확인 중 후보·안내 대상과 횡단보도 실패 사유를 구분한다."""
+    """신호등 검출·확인 중 후보·안내 대상만 표시하고 횡단보도 진단은 숨긴다."""
     result = frame.copy()
     height, width = frame.shape[:2]
-    association = prediction["association"]
     colors = {"red": (0, 0, 255), "green": (0, 255, 0), "unknown": (160, 160, 160)}
-    blue, yellow, purple, cyan = (255, 140, 79), (32, 176, 255), (255, 123, 181), (201, 201, 34)
+    blue, yellow = (255, 140, 79), (32, 176, 255)
     font = cv2.FONT_HERSHEY_SIMPLEX
     labels, occupied = [], []
 
@@ -97,29 +96,14 @@ def draw_traffic(frame, prediction):
         preferred = round(y1) - th - 3
         candidates = [preferred, round(y2) + 3]
         candidates += [y + h + 2 for _, y, _, h in occupied]
-        ly = next((y for y in candidates if y >= 30 and y + th < height - 50
+        ly = next((y for y in candidates if y >= 30 and y + th < height
                    and all(lx + tw <= x or lx >= x + w or y + th <= oy or y >= oy + h
                            for x, oy, w, h in occupied)),
                   max(0, min(preferred, height - th)))
         occupied.append((lx, ly, tw, th))
         labels.append((label, color, lx, ly, tw, th, scale, baseline))
 
-    for crossing in prediction["crosswalks"]:
-        status = crossing.get("crosswalk_status", "eligible")
-        color = cyan if status == "used" else purple
-        detail = {"used": "LINK USED", "eligible": "ELIGIBLE",
-                  "below_confidence": "LOW CONF", "position_rejected": "POSITION REJECTED"}[status]
-        reasons = crossing.get("exclusion_reasons", [])
-        reason_text = ",".join(reason for reason in reasons if reason != "below_confidence")
-        label = f"CROSSWALK {crossing['confidence'] * 100:.1f}% {detail}"
-        if reason_text:
-            label += f" ({reason_text})"
-        add_box(crossing["xyxy"], label, color, 3 if status == "used" else 2)
-
-    vp = association.get("vanishing_point")
-    vp_visible = vp is not None and 0 <= vp[0] < width and 0 <= vp[1] < height
-    if vp_visible:
-        cv2.drawMarker(result, point(*vp), cyan, cv2.MARKER_CROSS, 16, 2)
+    # 횡단보도 검출·연결 정보는 내부 판단에만 사용한다.
     for signal in prediction["detections"]:
         selection = signal["selection_status"]
         if selection == "selected":
@@ -133,9 +117,6 @@ def draw_traffic(frame, prediction):
         if signal.get("track_id") is not None:
             label += f" #{signal['track_id']}"
         add_box(signal["xyxy"], label, color, 4 if selection == "selected" else 2)
-        if vp_visible and selection in {"selected", "candidate"}:
-            x1, y1, x2, y2 = signal["xyxy"]
-            cv2.line(result, point((x1 + x2) / 2, (y1 + y2) / 2), point(*vp), color, 1)
 
     # 라벨은 모든 박스 뒤에 그려 다른 테두리에 가려지지 않게 한다.
     for label, color, x, y, w, h, scale, baseline in labels:
@@ -152,14 +133,6 @@ def draw_traffic(frame, prediction):
     text = f"SIGNALS {count} | {detail}"
     cv2.rectangle(result, (0, 0), (width - 1, 28), (24, 24, 24), -1)
     cv2.putText(result, text, (8, 20), font, fit_text(text), colors[state], 1, cv2.LINE_AA)
-    info = prediction.get("crosswalk_diagnostics", {})
-    reason = info.get("connection_status") or association.get("reason") or association["status"]
-    lines = [f"CROSSWALK {len(prediction['crosswalks'])} | {info.get('detection_status', 'unknown')}",
-             f"LINK: {reason}"]
-    cv2.rectangle(result, (0, max(0, height - 50)), (width - 1, height - 1), (24, 24, 24), -1)
-    for i, line in enumerate(lines):
-        cv2.putText(result, line, (8, max(12, height - 31 + i * 22)), font,
-                    fit_text(line), (240, 240, 240), 1, cv2.LINE_AA)
     return result
 
 

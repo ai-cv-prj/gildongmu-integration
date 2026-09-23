@@ -78,3 +78,52 @@ def sidewalk_context(item, class_map, label_ids, shape):
         return {"status": "unavailable", "walkable_fraction": None}
     fraction = float(np.isin(patch, ids).mean())
     return {"status": "available", "walkable_fraction": fraction}
+
+
+# 장애물 bbox 주변의 보행가능영역 검사
+def surrounding_walkability(item, class_map, label_ids, shape, cfg):
+    """
+    차량 bbox의 보이는 왼쪽·오른쪽·아래쪽 영역에서 보행가능 비율을 계산한다.
+    화면 밖으로 잘린 영역은 검사 대상에서 제외한다.
+    """
+    unavailable = {"status":"unavailable", "regions":{}, "all_non_walkable":True}
+    if class_map is None or label_ids is None or class_map.shape != tuple(shape[:2]):
+        return unavailable
+    walkable_ids = [label_ids[name] for name in ("walkable", "crosswalk") if name in label_ids]
+    if not walkable_ids:
+        return unavailable
+
+    height, width = shape[:2]
+    x1, y1, x2, y2 = item["box_norm"]
+    left, top = int(np.floor(x1*width)), int(np.floor(y1*height))
+    right, bottom = int(np.ceil(x2*width)), int(np.ceil(y2*height))
+    box_width, box_height = max(1,right-left), max(1,bottom-top)
+    side_width = max(cfg["surrounding_min_region_pixels"],
+                     min(round(box_width*cfg["surrounding_side_width_ratio"]),
+                         round(width*cfg["surrounding_max_side_width_ratio"])))
+    side_top = bottom-max(cfg["surrounding_min_region_pixels"],
+                          round(box_height*cfg["surrounding_side_height_ratio"]))
+    bottom_height = max(cfg["surrounding_min_region_pixels"],
+                        min(round(box_height*cfg["surrounding_bottom_height_ratio"]),
+                            round(height*cfg["surrounding_max_bottom_height_ratio"])))
+    candidates = {
+        "left": (left-side_width, side_top, left, bottom),
+        "right": (right, side_top, right+side_width, bottom),
+        "bottom": (left, bottom, right, bottom+bottom_height),
+    }
+    regions = {}
+    for name, (rx1,ry1,rx2,ry2) in candidates.items():
+        rx1,rx2=max(0,rx1),min(width,rx2)
+        ry1,ry2=max(0,ry1),min(height,ry2)
+        if rx2<=rx1 or ry2<=ry1:
+            continue
+        patch=class_map[ry1:ry2,rx1:rx2]
+        if patch.size < cfg["surrounding_min_region_pixels"]:
+            continue
+        regions[name]={"walkable_fraction":float(np.isin(patch,walkable_ids).mean()),
+                       "pixel_count":int(patch.size)}
+    fractions=[region["walkable_fraction"] for region in regions.values()]
+    return {"status":"available" if regions else "clipped",
+            "regions":regions,
+            "all_non_walkable":bool(not fractions or
+                all(value < cfg["surrounding_walkable_threshold"] for value in fractions))}

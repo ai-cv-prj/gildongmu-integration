@@ -2,7 +2,7 @@
 import math
 from copy import deepcopy
 from src.risk_config import risk_config
-from src.risk_geometry import geometry, sidewalk_context
+from src.risk_geometry import geometry, sidewalk_context, surrounding_walkability
 from src.risk_motion import CameraMotionGuard, MotionHistory
 from src.tracking import DetectionTracker
 from src.alert_policy import AlertPolicy
@@ -139,6 +139,14 @@ class RiskEngine:
                     if item["risk_level"] == "monitor":
                         item["risk_level"] = "caution"
                     item["reasons"].append("approaching")
+            surroundings = surrounding_walkability(g,class_map,label_ids,shape,self.config)
+            item["surrounding_walkability"] = surroundings
+            if (self.config["walkable_surroundings_filter_enabled"]
+                    and item["risk_level"] == "danger"
+                    and surroundings["all_non_walkable"]):
+                item["risk_level"] = "caution"
+                item["reasons"].append("nonwalkable_surroundings")
+                item["release_evidence"] = "nonwalkable_surroundings"
             clear = (timestamp_valid and camera_stable and not g["clipped"] and not roi["changed"])
             if clear and item["risk_level"] == "monitor":
                 if (max(g["corridor_overlap"],g["immediate_overlap"]) < self.config["exit_overlap_threshold"]
